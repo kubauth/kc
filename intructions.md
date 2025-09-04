@@ -11,3 +11,4 @@ Also, check this id_token, using go-oidc verifier
 
 Write a subcommand 'jwtd', which take a jwt token as only parameter or from stdin and display its content in a pretty json.
 
+Some claims, such as auth_time, exp, iat, rat seems to be timestamp. Patch the resulting json with a human readable string for these values.

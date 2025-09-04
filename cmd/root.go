@@ -53,6 +53,7 @@ func init() {
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(noUiCmd)
+	rootCmd.AddCommand(jwtdCmd)
 
 }
 
