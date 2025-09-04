@@ -7,4 +7,7 @@ Replace by a more appropriate function which will fetch also a JWT id token, if 
 
 Also, check this id_token, using go-oidc verifier
 
+--
+
+Write a subcommand 'jwtd', which take a jwt token as only parameter or from stdin and display its content in a pretty json.
 
