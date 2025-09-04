@@ -25,6 +25,7 @@ import (
 	"getok/internal/misc"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -132,12 +133,54 @@ func decodeJWTPart(part string) (string, error) {
 		return "", fmt.Errorf("JSON parse failed: %w", err)
 	}
 
-	prettyJSON, err := json.MarshalIndent(jsonData, "", "  ")
+	// Enhance with human-readable timestamps
+	enhancedData := enhanceWithTimestamps(jsonData)
+
+	prettyJSON, err := json.MarshalIndent(enhancedData, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("JSON formatting failed: %w", err)
 	}
 
 	return string(prettyJSON), nil
+}
+
+// enhanceWithTimestamps adds human-readable date strings for known timestamp claims
+func enhanceWithTimestamps(data interface{}) interface{} {
+	// List of known timestamp claims in JWT
+	timestampClaims := map[string]bool{
+		"exp":        true, // Expiration time
+		"iat":        true, // Issued at
+		"nbf":        true, // Not before
+		"auth_time":  true, // Authentication time
+		"rat":        true, // Refresh token issued at (some providers)
+		"updated_at": true, // Profile updated at (some providers)
+	}
+
+	switch v := data.(type) {
+	case map[string]interface{}:
+		enhanced := make(map[string]interface{})
+		for key, value := range v {
+			enhanced[key] = enhanceWithTimestamps(value)
+
+			// Check if this is a timestamp claim
+			if timestampClaims[key] {
+				if timestamp, ok := value.(float64); ok && timestamp > 0 {
+					// Convert Unix timestamp to human-readable date
+					t := time.Unix(int64(timestamp), 0).UTC()
+					enhanced[key+"_human"] = t.Format("2006-01-02 15:04:05 UTC")
+				}
+			}
+		}
+		return enhanced
+	case []interface{}:
+		enhanced := make([]interface{}, len(v))
+		for i, item := range v {
+			enhanced[i] = enhanceWithTimestamps(item)
+		}
+		return enhanced
+	default:
+		return v
+	}
 }
 
 // setupJwtd initializes minimal configuration needed for jwtd command
@@ -148,11 +191,11 @@ func setupJwtd() error {
 		Mode:  "text",
 		Level: "INFO",
 	}
-	
+
 	global.Logger, err = misc.NewLogger(&logConfig)
 	if err != nil {
 		return fmt.Errorf("could not create logger: %w", err)
 	}
-	
+
 	return nil
 }
