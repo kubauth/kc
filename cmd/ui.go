@@ -30,6 +30,7 @@ import (
 var uiParams struct {
 	httpSrvConfig httpsrv.Config
 	usePKCE       bool
+	browser       string
 }
 
 func init() {
@@ -37,6 +38,7 @@ func init() {
 	uiCmd.PersistentFlags().BoolVar(&uiParams.httpSrvConfig.DumpExchanges, "dumpServerExchanges", false, "Dump http server req/resp")
 	uiCmd.PersistentFlags().IntVarP(&uiParams.httpSrvConfig.BindPort, "bindPort", "p", 9921, "Local server Bind port")
 	uiCmd.PersistentFlags().BoolVar(&uiParams.usePKCE, "pkce", false, "Use PKCE (Proof Key for Code Exchange) for enhanced security")
+	uiCmd.PersistentFlags().StringVar(&uiParams.browser, "browser", "", "Browser to use (default: system default, options: chrome, firefox, safari)")
 }
 
 var uiCmd = &cobra.Command{
@@ -247,7 +249,7 @@ func performAuthorizationCodeFlow(ctx context.Context, provider *oidc.Provider, 
 	fmt.Printf("If browser doesn't open automatically, visit: http://%s:%d\n",
 		uiParams.httpSrvConfig.BindAddr, uiParams.httpSrvConfig.BindPort)
 
-	if err := openBrowser(authURL); err != nil {
+	if err := openBrowser(authURL, uiParams.browser); err != nil {
 		logger.Debug("Failed to open browser automatically", "error", err)
 	}
 
@@ -607,20 +609,60 @@ func generateRandomString(length int) (string, error) {
 }
 
 // openBrowser attempts to open the default browser with the given URL
-func openBrowser(url string) error {
+func openBrowser(url, browser string) error {
 	var cmd string
 	var args []string
 
-	switch runtime.GOOS {
-	case "windows":
-		cmd = "cmd"
-		args = []string{"/c", "start", url}
-	case "darwin":
-		cmd = "open"
-		args = []string{url}
-	default: // "linux", "freebsd", "openbsd", "netbsd"
-		cmd = "xdg-open"
-		args = []string{url}
+	// Handle specific browser requests
+	if browser != "" {
+		switch browser {
+		case "chrome":
+			switch runtime.GOOS {
+			case "windows":
+				cmd = "cmd"
+				args = []string{"/c", "start", "chrome", url}
+			case "darwin":
+				cmd = "open"
+				args = []string{"-a", "Google Chrome", url}
+			default: // Linux and others
+				cmd = "google-chrome"
+				args = []string{url}
+			}
+		case "firefox":
+			switch runtime.GOOS {
+			case "windows":
+				cmd = "cmd"
+				args = []string{"/c", "start", "firefox", url}
+			case "darwin":
+				cmd = "open"
+				args = []string{"-a", "Firefox", url}
+			default: // Linux and others
+				cmd = "firefox"
+				args = []string{url}
+			}
+		case "safari":
+			if runtime.GOOS == "darwin" {
+				cmd = "open"
+				args = []string{"-a", "Safari", url}
+			} else {
+				return fmt.Errorf("safari is only available on macOS")
+			}
+		default:
+			return fmt.Errorf("unsupported browser: %s (supported: chrome, firefox, safari)", browser)
+		}
+	} else {
+		// Default system browser
+		switch runtime.GOOS {
+		case "windows":
+			cmd = "cmd"
+			args = []string{"/c", "start", url}
+		case "darwin":
+			cmd = "open"
+			args = []string{url}
+		default: // "linux", "freebsd", "openbsd", "netbsd"
+			cmd = "xdg-open"
+			args = []string{url}
+		}
 	}
 
 	return exec.Command(cmd, args...).Start()

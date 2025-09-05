@@ -27,3 +27,8 @@ Add a small icon on top right corner of each token box to copy the value in the 
 
 The problem is the copy buttons does not react at all. Clicking in do nothing
 
+Add a --browser option for following values:
+- "": Default. Use default browser
+- "chrome": launch google chrome
+- firefox: launch firefox
+- safari: launch safari (Mac only)
