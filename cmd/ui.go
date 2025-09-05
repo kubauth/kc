@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"getok/internal/httpclient"
 	"getok/internal/httpsrv"
+	"html/template"
 	"io"
 	"log/slog"
 	"net/http"
@@ -332,7 +333,7 @@ func exchangeCodeForTokens(ctx context.Context, oauth2Config oauth2.Config, code
 
 // displaySuccessPage shows a success page with token information
 func displaySuccessPage(w http.ResponseWriter, tokenResponse *TokenResponse) {
-	html := `<!DOCTYPE html>
+	tmplStr := `<!DOCTYPE html>
 <html>
 <head>
     <title>Authorization Successful</title>
@@ -341,63 +342,225 @@ func displaySuccessPage(w http.ResponseWriter, tokenResponse *TokenResponse) {
         .container { text-align: center; }
         .success { color: #4CAF50; }
         .token-info { background: #f5f5f5; padding: 20px; margin: 20px 0; text-align: left; border-radius: 5px; }
-        .token-field { margin: 10px 0; word-break: break-all; }
+        .token-field { margin: 10px 0; word-break: break-all; position: relative; }
         .token-label { font-weight: bold; color: #333; }
-        .token-value { font-family: monospace; background: #e8e8e8; padding: 5px; border-radius: 3px; }
+        .token-value { 
+            font-family: monospace; 
+            background: #e8e8e8; 
+            padding: 10px; 
+            border-radius: 3px; 
+            position: relative;
+            padding-right: 65px;
+        }
+        .copy-icon {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            cursor: pointer;
+            background: #007cba;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 10px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            transition: all 0.2s ease;
+            min-width: 50px;
+            height: 26px;
+            text-align: center;
+            line-height: 14px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            z-index: 10;
+        }
+        .copy-icon:hover {
+            background: #005a87;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        .copy-icon:active {
+            background: #004466;
+            transform: translateY(0);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+        .copy-feedback {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: #4CAF50;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            min-width: 50px;
+            height: 26px;
+            text-align: center;
+            line-height: 14px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            z-index: 5;
+            pointer-events: none;
+        }
+        .copy-feedback.show {
+            opacity: 1;
+        }
         .close-message { margin-top: 30px; font-style: italic; color: #666; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1 class="success">✅ Authorization Successful!</h1>
+        <h1 class="success">Authorization Successful!</h1>
         <p>Tokens have been retrieved successfully.</p>
         
         <div class="token-info">
-            <h3>Token Information:</h3>`
-
-	if tokenResponse.AccessToken != "" {
-		html += fmt.Sprintf(`
+            <h3>Token Information:</h3>
+            {{if .AccessToken}}
             <div class="token-field">
                 <div class="token-label">Access Token:</div>
-                <div class="token-value">%s</div>
-            </div>`, tokenResponse.AccessToken)
-	}
-
-	if tokenResponse.IDToken != "" {
-		html += fmt.Sprintf(`
+                <div class="token-value">{{.AccessToken}}
+                    <button class="copy-icon" data-token-type="access" title="Copy to clipboard">COPY</button>
+                    <div class="copy-feedback">Copied!</div>
+                </div>
+            </div>
+            {{end}}
+            {{if .IDToken}}
             <div class="token-field">
                 <div class="token-label">ID Token:</div>
-                <div class="token-value">%s</div>
-            </div>`, tokenResponse.IDToken)
-	}
-
-	if tokenResponse.RefreshToken != "" {
-		html += fmt.Sprintf(`
+                <div class="token-value">{{.IDToken}}
+                    <button class="copy-icon" data-token-type="id" title="Copy to clipboard">COPY</button>
+                    <div class="copy-feedback">Copied!</div>
+                </div>
+            </div>
+            {{end}}
+            {{if .RefreshToken}}
             <div class="token-field">
                 <div class="token-label">Refresh Token:</div>
-                <div class="token-value">%s</div>
-            </div>`, tokenResponse.RefreshToken)
-	}
-
-	if tokenResponse.ExpiresIn > 0 {
-		html += fmt.Sprintf(`
+                <div class="token-value">{{.RefreshToken}}
+                    <button class="copy-icon" data-token-type="refresh" title="Copy to clipboard">COPY</button>
+                    <div class="copy-feedback">Copied!</div>
+                </div>
+            </div>
+            {{end}}
+            {{if gt .ExpiresIn 0}}
             <div class="token-field">
                 <div class="token-label">Expires In:</div>
-                <div class="token-value">%d seconds (%s)</div>
-            </div>`, tokenResponse.ExpiresIn, time.Duration(tokenResponse.ExpiresIn)*time.Second)
-	}
-
-	html += `
+                <div class="token-value">{{.ExpiresIn}} seconds ({{.ExpiresInDuration}})</div>
+            </div>
+            {{end}}
         </div>
         
         <p class="close-message">You can close this browser window and return to the command line.</p>
     </div>
+    
+    <script>
+        function copyTokenToClipboard(buttonElement) {
+            // Find the token text by looking at the parent token-value div
+            const tokenValueDiv = buttonElement.parentNode;
+            const tokenText = tokenValueDiv.childNodes[0].textContent.trim();
+            
+            // Try modern clipboard API first
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(tokenText).then(function() {
+                    showFeedback(buttonElement);
+                }).catch(function(err) {
+                    fallbackCopy(tokenText, buttonElement);
+                });
+            } else {
+                fallbackCopy(tokenText, buttonElement);
+            }
+        }
+        
+        function fallbackCopy(text, buttonElement) {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showFeedback(buttonElement);
+                }
+            } catch (err) {
+                // Silent fallback failure
+            } finally {
+                document.body.removeChild(textArea);
+            }
+        }
+        
+        function showFeedback(buttonElement) {
+            const feedback = buttonElement.nextElementSibling;
+            if (feedback && feedback.classList) {
+                feedback.classList.add('show');
+                setTimeout(function() {
+                    feedback.classList.remove('show');
+                }, 2000);
+            }
+        }
+        
+        // Use event delegation - attach to document
+        document.addEventListener('click', function(event) {
+            // Check if the clicked element or its parent is a copy button
+            let target = event.target;
+            let copyButton = null;
+            
+            // Look for copy-icon class in the clicked element or its parents
+            while (target && target !== document) {
+                if (target.classList && target.classList.contains('copy-icon')) {
+                    copyButton = target;
+                    break;
+                }
+                target = target.parentNode;
+            }
+            
+            if (copyButton) {
+                event.preventDefault();
+                event.stopPropagation();
+                copyTokenToClipboard(copyButton);
+            }
+        });
+        
+        // Also add direct event listeners when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            const copyButtons = document.querySelectorAll('.copy-icon');
+            
+            copyButtons.forEach(function(button) {
+                button.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    copyTokenToClipboard(this);
+                });
+            });
+        });
+    </script>
 </body>
 </html>`
 
+	tmpl, err := template.New("success").Parse(tmplStr)
+	if err != nil {
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		*TokenResponse
+		ExpiresInDuration string
+	}{
+		TokenResponse:     tokenResponse,
+		ExpiresInDuration: time.Duration(tokenResponse.ExpiresIn * int(time.Second)).String(),
+	}
+
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(html))
+	tmpl.Execute(w, data)
 }
 
 // outputTokens outputs tokens in the requested format to command line

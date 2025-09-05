@@ -22,3 +22,8 @@ Resulting Token will be displayed both in the resulting web page and to the comm
 
 Make PKCE as an option, triggered by a new CLI flag 'pkce', false by default
 
+Add a small icon on top right corner of each token box to copy the value in the clipboard.
+
+
+The problem is the copy buttons does not react at all. Clicking in do nothing
+
