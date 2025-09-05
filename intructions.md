@@ -16,4 +16,9 @@ In jwtd display, some claims, such as auth_time, exp, iat, rat seems to be times
 --
 
 Complete the ui.go subcommand to handle fetching of tokens using authorisation code flow. 
-This will need to spawn a local browser to a local webserver, build with internal.httpserver
+This will need to spawn a local browser to a local webserver, build with internal.httpserver.
+Resulting Token will be displayed both in the resulting web page and to the command prompt, as already implemented.
+
+
+Make PKCE as an option, triggered by a new CLI flag 'pkce', false by default
+
