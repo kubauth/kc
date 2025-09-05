@@ -68,9 +68,9 @@ func NewLogger(logConfig *LogConfig) (*slog.Logger, error) {
 	var handler slog.Handler
 	switch strings.ToLower(logConfig.Mode) {
 	case "json":
-		handler = slog.NewJSONHandler(os.Stdout, opts)
+		handler = slog.NewJSONHandler(os.Stderr, opts)
 	case "text":
-		handler = slog.NewTextHandler(os.Stdout, opts)
+		handler = slog.NewTextHandler(os.Stderr, opts)
 	default:
 		return nil, errors.New("invalid log mode: " + logConfig.Mode + ". Valid modes are: json, text")
 	}

@@ -49,7 +49,7 @@ func setupJwt() (*slog.Logger, error) {
 }
 
 var jwtCmd = &cobra.Command{
-	Use:   "jwtd [jwt-token]",
+	Use:   "jwt [jwt-token]",
 	Short: "Decode and display JWT token content in pretty JSON",
 	Long: `Decode and display JWT token content in pretty JSON format.
 The JWT token can be provided as a command line argument or read from stdin.

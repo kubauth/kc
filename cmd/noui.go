@@ -6,14 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"getok/internal/httpclient"
-	"github.com/go-logr/logr"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"syscall"
-	"time"
+
+	"github.com/go-logr/logr"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/spf13/cobra"
@@ -85,44 +85,8 @@ var noUiCmd = &cobra.Command{
 			}
 		}
 
-		// Optionally output ID token if requested and present
-		if oidcParams.onlyIDToken {
-			if tokenResponse.IDToken == "" {
-				_, _ = fmt.Fprintf(os.Stderr, "No ID token\n")
-			} else {
-				fmt.Println(tokenResponse.IDToken)
-			}
-		} else if oidcParams.onlyAccessToken {
-			if tokenResponse.AccessToken == "" {
-				_, _ = fmt.Fprintf(os.Stderr, "No access token\n")
-			} else {
-				fmt.Println(tokenResponse.AccessToken)
-			}
-		} else {
-			if tokenResponse.AccessToken != "" {
-				fmt.Printf("Access token: %s\n", tokenResponse.AccessToken)
-			} else {
-				fmt.Printf("Access token: null\n")
-			}
-			if tokenResponse.RefreshToken != "" {
-				fmt.Printf("Refresh token: %s\n", tokenResponse.RefreshToken)
-			} else {
-				fmt.Printf("Refresh token: null\n")
-			}
-			if tokenResponse.IDToken != "" {
-				fmt.Printf("ID token: %s\n", tokenResponse.IDToken)
-			} else {
-				fmt.Printf("ID token: null\n")
-			}
-			fmt.Printf("Expire in :%s sec\n", time.Duration(tokenResponse.ExpiresIn)*time.Second)
-
-		}
-		//if tokenResponse.IDToken != "" {
-		//	global.Logger.Debug("ID token received", "length", len(tokenResponse.IDToken))
-		//	if noUiParams.showIDToken {
-		//		fmt.Fprintf(os.Stderr, "ID Token: %s\n", tokenResponse.IDToken)
-		//	}
-		//}
+		// Output tokens using shared function
+		outputTokens(tokenResponse)
 
 	},
 }

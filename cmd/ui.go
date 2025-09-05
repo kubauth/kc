@@ -141,7 +141,7 @@ func performAuthorizationCodeFlow(ctx context.Context, provider *oidc.Provider, 
 		authURL = oauth2Config.AuthCodeURL(state)
 	}
 
-	logger.Info("Authorization URL generated", "redirectURI", redirectURI, "authURL", authURL)
+	logger.Debug("Authorization URL generated", "redirectURI", redirectURI, "authURL", authURL)
 
 	// Create HTTP server for callback
 	var tokenResponse *TokenResponse
@@ -245,8 +245,8 @@ func performAuthorizationCodeFlow(ctx context.Context, provider *oidc.Provider, 
 	time.Sleep(100 * time.Millisecond)
 
 	// Open browser
-	fmt.Printf("Opening browser to: %s\n", authURL)
-	fmt.Printf("If browser doesn't open automatically, visit: http://%s:%d\n",
+	//fmt.Printf("Opening browser to: %s\n", authURL)
+	_, _ = fmt.Fprintf(os.Stderr, "If browser doesn't open automatically, visit: http://%s:%d\n",
 		uiParams.httpSrvConfig.BindAddr, uiParams.httpSrvConfig.BindPort)
 
 	if err := openBrowser(authURL, uiParams.browser); err != nil {
@@ -563,40 +563,6 @@ func displaySuccessPage(w http.ResponseWriter, tokenResponse *TokenResponse) {
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
 	tmpl.Execute(w, data)
-}
-
-// outputTokens outputs tokens in the requested format to command line
-func outputTokens(tokenResponse *TokenResponse) {
-	if oidcParams.onlyIDToken {
-		if tokenResponse.IDToken == "" {
-			_, _ = fmt.Fprintf(os.Stderr, "No ID token\n")
-		} else {
-			fmt.Println(tokenResponse.IDToken)
-		}
-	} else if oidcParams.onlyAccessToken {
-		if tokenResponse.AccessToken == "" {
-			_, _ = fmt.Fprintf(os.Stderr, "No access token\n")
-		} else {
-			fmt.Println(tokenResponse.AccessToken)
-		}
-	} else {
-		if tokenResponse.AccessToken != "" {
-			fmt.Printf("Access token: %s\n", tokenResponse.AccessToken)
-		} else {
-			fmt.Printf("Access token: null\n")
-		}
-		if tokenResponse.RefreshToken != "" {
-			fmt.Printf("Refresh token: %s\n", tokenResponse.RefreshToken)
-		} else {
-			fmt.Printf("Refresh token: null\n")
-		}
-		if tokenResponse.IDToken != "" {
-			fmt.Printf("ID token: %s\n", tokenResponse.IDToken)
-		} else {
-			fmt.Printf("ID token: null\n")
-		}
-		fmt.Printf("Expire in: %s\n", time.Duration(tokenResponse.ExpiresIn)*time.Second)
-	}
 }
 
 // generateRandomString generates a cryptographically secure random string
