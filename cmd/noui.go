@@ -5,8 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"getok/global"
 	"getok/internal/httpclient"
+	"github.com/go-logr/logr"
 	"io"
 	"net/http"
 	"net/url"
@@ -21,27 +21,14 @@ import (
 )
 
 var noUiParams struct {
-	login           string
-	password        string
-	onlyIDToken     bool
-	onlyAccessToken bool
-}
-
-// TokenResponse represents the OAuth2/OIDC token response
-type TokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	ExpiresIn    int    `json:"expires_in,omitempty"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	IDToken      string `json:"id_token,omitempty"`
-	Scope        string `json:"scope,omitempty"`
+	login    string
+	password string
 }
 
 func init() {
-	noUiCmd.PersistentFlags().StringVarP(&noUiParams.login, "login", "u", "", "User login")
-	noUiCmd.PersistentFlags().StringVarP(&noUiParams.password, "password", "p", "", "User password")
-	noUiCmd.PersistentFlags().BoolVar(&noUiParams.onlyIDToken, "onlyIDToken", false, "Output only ID token")
-	noUiCmd.PersistentFlags().BoolVar(&noUiParams.onlyAccessToken, "onlyAccessToken", false, "Output only Access token")
+	initOidcParams(noUiCmd)
+	noUiCmd.PersistentFlags().StringVarP(&noUiParams.login, "login", "u", "", "User login (Env:GETOK_USER_LOGIN)")
+	noUiCmd.PersistentFlags().StringVarP(&noUiParams.password, "password", "p", "", "User password (Env:GETOK_USER_PASSWORD)")
 }
 
 var noUiCmd = &cobra.Command{
@@ -50,27 +37,30 @@ var noUiCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		err := setup()
+		logger, err := setupOidc(cmd)
 		if err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 
-		global.Logger.Debug("Start No UI processing", "issuer", rootParams.httpConfig.BaseURL)
+		logger.Debug("Start No UI processing", "issuer", oidcParams.httpClientConfig.BaseURL)
 
-		httpClient, err := httpclient.New(&rootParams.httpConfig)
+		httpClient, err := httpclient.New(&oidcParams.httpClientConfig)
 		if err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 
 		ctx := oidc.ClientContext(context.Background(), httpClient)
-		provider, err := oidc.NewProvider(ctx, rootParams.httpConfig.BaseURL)
+		ctx = logr.NewContextWithSlogLogger(ctx, logger)
+
+		provider, err := oidc.NewProvider(ctx, oidcParams.httpClientConfig.BaseURL)
 		if err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 		endpoints := provider.Endpoint()
-		global.Logger.Debug("OIDC provider initialized", "AuthURL", endpoints.AuthURL, "tokenURL", endpoints.TokenURL, "UserInfoURL", provider.UserInfoEndpoint())
+		logger.Debug("OIDC provider initialized", "AuthURL", endpoints.AuthURL, "tokenURL", endpoints.TokenURL, "UserInfoURL", provider.UserInfoEndpoint())
 		login := noUiParams.login
 		password := noUiParams.password
 		for login == "" || password == "" {
@@ -78,7 +68,7 @@ var noUiCmd = &cobra.Command{
 		}
 
 		// Perform password credentials flow with direct HTTP request to get both access and ID tokens
-		tokenResponse, err := passwordCredentialsFlow(ctx, httpClient, provider.Endpoint().TokenURL, rootParams.clientId, rootParams.clientSecret, login, password, rootParams.scopes)
+		tokenResponse, err := passwordCredentialsFlow(ctx, httpClient, provider.Endpoint().TokenURL, oidcParams.clientId, oidcParams.clientSecret, login, password, oidcParams.scopes)
 		if err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -86,23 +76,23 @@ var noUiCmd = &cobra.Command{
 
 		// Verify ID token if present
 		if tokenResponse.IDToken != "" {
-			err = verifyIDToken(ctx, provider, tokenResponse.IDToken, rootParams.clientId)
+			err = verifyIDToken(ctx, provider, tokenResponse.IDToken, oidcParams.clientId)
 			if err != nil {
-				global.Logger.Debug("ID token verification failed", "error", err)
+				logger.Debug("ID token verification failed", "error", err)
 				_, _ = fmt.Fprintf(os.Stderr, "Warning: ID token verification failed: %v\n", err)
 			} else {
-				global.Logger.Debug("ID token verified successfully")
+				logger.Debug("ID token verified successfully")
 			}
 		}
 
 		// Optionally output ID token if requested and present
-		if noUiParams.onlyIDToken {
+		if oidcParams.onlyIDToken {
 			if tokenResponse.IDToken == "" {
 				_, _ = fmt.Fprintf(os.Stderr, "No ID token\n")
 			} else {
 				fmt.Println(tokenResponse.IDToken)
 			}
-		} else if noUiParams.onlyAccessToken {
+		} else if oidcParams.onlyAccessToken {
 			if tokenResponse.AccessToken == "" {
 				_, _ = fmt.Fprintf(os.Stderr, "No access token\n")
 			} else {
@@ -168,7 +158,7 @@ func inputPassword(prompt string) string {
 	if err != nil {
 		panic(err)
 	}
-	bytePassword, err2 := terminal.ReadPassword(int(syscall.Stdin))
+	bytePassword, err2 := terminal.ReadPassword(syscall.Stdin)
 	if err2 != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Unable to access stdin to input password. Try login with '--login' and '--password' options.\n\n")
 		os.Exit(18)
@@ -180,6 +170,7 @@ func inputPassword(prompt string) string {
 // passwordCredentialsFlow performs the OAuth2 Resource Owner Password Credentials flow
 // with a direct HTTP request to retrieve both access_token and id_token
 func passwordCredentialsFlow(ctx context.Context, httpClient *http.Client, tokenURL, clientID, clientSecret, username, password string, scopes []string) (*TokenResponse, error) {
+	logger := logr.FromContextAsSlogLogger(ctx)
 	// Prepare form data
 	data := url.Values{}
 	data.Set("grant_type", "password")
@@ -202,7 +193,7 @@ func passwordCredentialsFlow(ctx context.Context, httpClient *http.Client, token
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
-	global.Logger.Debug("Making password credentials request", "tokenURL", tokenURL, "clientID", clientID, "scopes", scopes)
+	logger.Debug("Making password credentials request", "tokenURL", tokenURL, "clientID", clientID, "scopes", scopes)
 
 	// Perform request
 	resp, err := httpClient.Do(req)
@@ -228,13 +219,15 @@ func passwordCredentialsFlow(ctx context.Context, httpClient *http.Client, token
 		return nil, fmt.Errorf("failed to parse token response: %w", err)
 	}
 
-	global.Logger.Debug("Token response received", "hasAccessToken", tokenResponse.AccessToken != "", "hasIDToken", tokenResponse.IDToken != "")
+	logger.Debug("Token response received", "hasAccessToken", tokenResponse.AccessToken != "", "hasIDToken", tokenResponse.IDToken != "")
 
 	return &tokenResponse, nil
 }
 
 // verifyIDToken verifies the ID token using go-oidc verifier
 func verifyIDToken(ctx context.Context, provider *oidc.Provider, idToken, clientID string) error {
+	logger := logr.FromContextAsSlogLogger(ctx)
+
 	// Create ID token verifier
 	verifier := provider.Verifier(&oidc.Config{
 		ClientID: clientID,
@@ -246,7 +239,7 @@ func verifyIDToken(ctx context.Context, provider *oidc.Provider, idToken, client
 		return fmt.Errorf("ID token verification failed: %w", err)
 	}
 
-	global.Logger.Debug("ID token verified", "subject", token.Subject, "issuer", token.Issuer, "audience", token.Audience)
+	logger.Debug("ID token verified", "subject", token.Subject, "issuer", token.Issuer, "audience", token.Audience)
 
 	return nil
 }

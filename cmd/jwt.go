@@ -21,8 +21,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"getok/global"
 	"getok/internal/misc"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -30,7 +30,25 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var jwtdCmd = &cobra.Command{
+var jwtdParams struct {
+	logConfig misc.LogConfig
+}
+
+func init() {
+	jwtCmd.PersistentFlags().StringVar(&jwtdParams.logConfig.Mode, "logMode", "text", "Log mode ('text' or 'json')")
+	jwtCmd.PersistentFlags().StringVarP(&jwtdParams.logConfig.Level, "logLevel", "l", "INFO", "Log level(DEBUG, INFO, WARN, ERROR)")
+}
+
+// setupJwtd initializes minimal configuration needed for jwtd command
+func setupJwt() (*slog.Logger, error) {
+	logger, err := misc.NewLogger(&jwtdParams.logConfig)
+	if err != nil {
+		return nil, fmt.Errorf("could not create logger: %w", err)
+	}
+	return logger, nil
+}
+
+var jwtCmd = &cobra.Command{
 	Use:   "jwtd [jwt-token]",
 	Short: "Decode and display JWT token content in pretty JSON",
 	Long: `Decode and display JWT token content in pretty JSON format.
@@ -39,9 +57,10 @@ The JWT token can be provided as a command line argument or read from stdin.
 Examples:
   getok jwtd eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   echo "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." | getok jwtd`,
+
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		err := setupJwtd()
+		logger, err := setupJwt()
 		if err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -69,7 +88,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		global.Logger.Debug("Decoding JWT token", "length", len(jwtToken))
+		logger.Debug("Decoding JWT token", "length", len(jwtToken))
 
 		// Decode and display JWT
 		err = decodeAndDisplayJWT(jwtToken)
@@ -77,6 +96,7 @@ Examples:
 			_, _ = fmt.Fprintf(os.Stderr, "Error decoding JWT: %v\n", err)
 			os.Exit(1)
 		}
+		logger.Debug("JWT decoded successfully")
 	},
 }
 
@@ -107,7 +127,6 @@ func decodeAndDisplayJWT(token string) error {
 	fmt.Println("JWT Payload:")
 	fmt.Println(payload)
 
-	global.Logger.Debug("JWT decoded successfully")
 	return nil
 }
 
@@ -181,21 +200,4 @@ func enhanceWithTimestamps(data interface{}) interface{} {
 	default:
 		return v
 	}
-}
-
-// setupJwtd initializes minimal configuration needed for jwtd command
-func setupJwtd() error {
-	var err error
-	// Only setup logging, no need for OIDC/OAuth2 configuration
-	logConfig := misc.LogConfig{
-		Mode:  "text",
-		Level: "INFO",
-	}
-
-	global.Logger, err = misc.NewLogger(&logConfig)
-	if err != nil {
-		return fmt.Errorf("could not create logger: %w", err)
-	}
-
-	return nil
 }

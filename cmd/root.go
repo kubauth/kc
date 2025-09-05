@@ -18,9 +18,6 @@ package cmd
 
 import (
 	"fmt"
-	"getok/global"
-	"getok/internal/httpclient"
-	"getok/internal/misc"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"os"
@@ -30,52 +27,13 @@ func init() {
 
 }
 
-var rootParams struct {
-	logConfig  misc.LogConfig
-	httpConfig httpclient.Config
-	scopes     []string
-
-	clientId     string
-	clientSecret string
-}
-
 func init() {
-	rootCmd.PersistentFlags().StringVar(&rootParams.logConfig.Mode, "logMode", "text", "Log mode ('text' or 'json')")
-	rootCmd.PersistentFlags().StringVarP(&rootParams.logConfig.Level, "logLevel", "l", "INFO", "Log level(DEBUG, INFO, WARN, ERROR)")
-	rootCmd.PersistentFlags().BoolVar(&rootParams.httpConfig.DumpExchanges, "dumpExchanges", false, "Dump http client req/resp")
-	rootCmd.PersistentFlags().BoolVar(&rootParams.httpConfig.InsecureSkipVerify, "insecureSkipVerify", false, "Don't validate server certificate")
-	rootCmd.PersistentFlags().StringArrayVar(&rootParams.httpConfig.RootCaPaths, "caFile", []string{}, "Root CA path(s) for validation of issuer URL.")
-	rootCmd.PersistentFlags().StringArrayVar(&rootParams.scopes, "scope", []string{"openid", "profile"}, "Requested scopes.")
-
-	rootCmd.PersistentFlags().StringVarP(&rootParams.httpConfig.BaseURL, "issuerURL", "i", "", "issuer URL")
-	rootCmd.PersistentFlags().StringVarP(&rootParams.clientId, "clientId", "c", "", "Client ID")
-	rootCmd.PersistentFlags().StringVarP(&rootParams.clientSecret, "clientSecret", "s", "", "Client Secret")
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(noUiCmd)
-	rootCmd.AddCommand(jwtdCmd)
+	rootCmd.AddCommand(uiCmd)
+	rootCmd.AddCommand(jwtCmd)
 
-}
-
-func setup() error {
-
-	var err error
-	global.Logger, err = misc.NewLogger(&rootParams.logConfig)
-	if err != nil {
-		return fmt.Errorf("could not create logger: %w", err)
-	}
-	adjustStringParam(rootCmd.PersistentFlags(), "issuerURL", "GETOK_ISSUER_URL", &rootParams.httpConfig.BaseURL)
-	adjustStringParam(rootCmd.PersistentFlags(), "clientId", "GETOK_CLIENT_ID", &rootParams.clientId)
-	adjustStringParam(rootCmd.PersistentFlags(), "clientSecret", "GETOK_CLIENT_SECRET", &rootParams.clientSecret)
-
-	if rootParams.httpConfig.BaseURL == "" {
-		return fmt.Errorf("issuer URL cannot be empty")
-	}
-	if rootParams.clientId == "" {
-		return fmt.Errorf("client ID cannot be empty")
-	}
-	// clientSecret can be null (public client)
-	return nil
 }
 
 var rootCmd = &cobra.Command{
