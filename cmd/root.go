@@ -18,9 +18,10 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"os"
 )
 
 func init() {
@@ -33,6 +34,7 @@ func init() {
 	rootCmd.AddCommand(noUiCmd)
 	rootCmd.AddCommand(uiCmd)
 	rootCmd.AddCommand(jwtCmd)
+	rootCmd.AddCommand(logoutCmd)
 
 }
 

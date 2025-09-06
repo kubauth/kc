@@ -32,3 +32,11 @@ Add a --browser option for following values:
 - "chrome": launch google chrome
 - firefox: launch firefox
 - safari: launch safari (Mac only)
+
+
+Create a logout command which will
+- find the 'end_session_endpoint' by fetching the server configuration (.well-known/openid-configuration)
+- Launch a browser on this endpoint.
+Use the 'openBrowser()' function of ui.go by moving it in common.go
+Use the same code pattern than others commands.
+

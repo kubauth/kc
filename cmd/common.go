@@ -6,6 +6,8 @@ import (
 	"getok/internal/misc"
 	"log/slog"
 	"os"
+	"os/exec"
+	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -100,4 +102,64 @@ func outputTokens(tokenResponse *TokenResponse) {
 		}
 		fmt.Printf("Expire in: %s\n", time.Duration(tokenResponse.ExpiresIn)*time.Second)
 	}
+}
+
+// openBrowser attempts to open a browser with the given URL and browser preference
+func openBrowser(url, browser string) error {
+	var cmd string
+	var args []string
+
+	// Handle specific browser requests
+	if browser != "" {
+		switch browser {
+		case "chrome":
+			switch runtime.GOOS {
+			case "windows":
+				cmd = "cmd"
+				args = []string{"/c", "start", "chrome", url}
+			case "darwin":
+				cmd = "open"
+				args = []string{"-a", "Google Chrome", url}
+			default: // Linux and others
+				cmd = "google-chrome"
+				args = []string{url}
+			}
+		case "firefox":
+			switch runtime.GOOS {
+			case "windows":
+				cmd = "cmd"
+				args = []string{"/c", "start", "firefox", url}
+			case "darwin":
+				cmd = "open"
+				args = []string{"-a", "Firefox", url}
+			default: // Linux and others
+				cmd = "firefox"
+				args = []string{url}
+			}
+		case "safari":
+			if runtime.GOOS == "darwin" {
+				cmd = "open"
+				args = []string{"-a", "Safari", url}
+			} else {
+				return fmt.Errorf("safari is only available on macOS")
+			}
+		default:
+			return fmt.Errorf("unsupported browser: %s (supported: chrome, firefox, safari)", browser)
+		}
+	} else {
+		// Default system browser
+		switch runtime.GOOS {
+		case "windows":
+			cmd = "cmd"
+			args = []string{"/c", "start", url}
+		case "darwin":
+			cmd = "open"
+			args = []string{url}
+		default: // "linux", "freebsd", "openbsd", "netbsd"
+			cmd = "xdg-open"
+			args = []string{url}
+		}
+	}
+
+	return exec.Command(cmd, args...).Start()
 }
