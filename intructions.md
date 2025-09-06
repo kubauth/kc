@@ -40,3 +40,4 @@ Create a logout command which will
 Use the 'openBrowser()' function of ui.go by moving it in common.go
 Use the same code pattern than others commands.
 
+for logout function, do not use oidcParams but duplicate only the needed flgas.

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"getok/internal/httpclient"
+	"getok/internal/misc"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -14,12 +16,23 @@ import (
 )
 
 var logoutParams struct {
-	browser string
+	browser             string
+	issuerURL           string
+	logLevel            string
+	logMode             string
+	dumpClientExchanges bool
+	insecureSkipVerify  bool
+	rootCaPaths         []string
 }
 
 func init() {
-	initOidcParams(logoutCmd)
 	logoutCmd.PersistentFlags().StringVar(&logoutParams.browser, "browser", "", "Browser to use (default: system default, options: chrome, firefox, safari)")
+	logoutCmd.PersistentFlags().StringVarP(&logoutParams.issuerURL, "issuerURL", "i", "", "issuer URL (Env:GETOK_ISSUER_URL)")
+	logoutCmd.PersistentFlags().StringVarP(&logoutParams.logLevel, "logLevel", "l", "INFO", "Log level(DEBUG, INFO, WARN, ERROR)")
+	logoutCmd.PersistentFlags().StringVar(&logoutParams.logMode, "logMode", "text", "Log mode ('text' or 'json')")
+	logoutCmd.PersistentFlags().BoolVar(&logoutParams.dumpClientExchanges, "dumpClientExchanges", false, "Dump http client req/resp")
+	logoutCmd.PersistentFlags().BoolVar(&logoutParams.insecureSkipVerify, "insecureSkipVerify", false, "Don't validate issuer certificate")
+	logoutCmd.PersistentFlags().StringArrayVar(&logoutParams.rootCaPaths, "caFile", []string{}, "Root CA path(s) for validation of issuer URL.")
 }
 
 var logoutCmd = &cobra.Command{
@@ -27,15 +40,15 @@ var logoutCmd = &cobra.Command{
 	Short: "Logout: Open browser to end_session_endpoint for logout",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		logger, err := setupOidc(cmd)
+		logger, httpClientConfig, err := setupLogout(cmd)
 		if err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 
-		logger.Debug("Start logout processing", "issuer", oidcParams.httpClientConfig.BaseURL)
+		logger.Debug("Start logout processing", "issuer", httpClientConfig.BaseURL)
 
-		httpClient, err := httpclient.New(&oidcParams.httpClientConfig)
+		httpClient, err := httpclient.New(httpClientConfig)
 		if err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -45,7 +58,7 @@ var logoutCmd = &cobra.Command{
 		ctx = logr.NewContextWithSlogLogger(ctx, logger)
 
 		// Fetch OIDC configuration to get end_session_endpoint
-		endSessionEndpoint, err := getEndSessionEndpoint(ctx, httpClient, oidcParams.httpClientConfig.BaseURL)
+		endSessionEndpoint, err := getEndSessionEndpoint(ctx, httpClient, httpClientConfig.BaseURL)
 		if err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -66,6 +79,36 @@ var logoutCmd = &cobra.Command{
 			_, _ = fmt.Fprintf(os.Stderr, "Failed to open browser automatically. Please visit: %s\n", endSessionEndpoint)
 		}
 	},
+}
+
+// setupLogout sets up the logger and HTTP client configuration for logout command
+func setupLogout(cmd *cobra.Command) (*slog.Logger, *httpclient.Config, error) {
+	// Setup logging
+	logConfig := misc.LogConfig{
+		Level: logoutParams.logLevel,
+		Mode:  logoutParams.logMode,
+	}
+	logger, err := misc.NewLogger(&logConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not create logger: %w", err)
+	}
+
+	// Handle environment variables
+	adjustStringParam(cmd.PersistentFlags(), "issuerURL", "GETOK_ISSUER_URL", &logoutParams.issuerURL)
+
+	if logoutParams.issuerURL == "" {
+		return logger, nil, fmt.Errorf("issuer URL cannot be empty")
+	}
+
+	// Setup HTTP client configuration
+	httpClientConfig := &httpclient.Config{
+		BaseURL:            logoutParams.issuerURL,
+		DumpExchanges:      logoutParams.dumpClientExchanges,
+		InsecureSkipVerify: logoutParams.insecureSkipVerify,
+		RootCaPaths:        logoutParams.rootCaPaths,
+	}
+
+	return logger, httpClientConfig, nil
 }
 
 // OIDCConfiguration represents the OIDC provider configuration
