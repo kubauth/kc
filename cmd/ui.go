@@ -33,7 +33,7 @@ var uiParams struct {
 
 func init() {
 	initOidcParams(uiCmd)
-	uiCmd.PersistentFlags().BoolVar(&uiParams.httpSrvConfig.DumpExchanges, "dumpServerExchanges", false, "Dump http server req/resp")
+	uiCmd.PersistentFlags().IntVar(&uiParams.httpSrvConfig.DumpExchanges, "dumpServerExchanges", 0, "Dump http server req/resp (0, 1, 2 or 3)")
 	uiCmd.PersistentFlags().IntVarP(&uiParams.httpSrvConfig.BindPort, "bindPort", "p", 9921, "Local server Bind port")
 	uiCmd.PersistentFlags().BoolVar(&uiParams.usePKCE, "pkce", false, "Use PKCE (Proof Key for Code Exchange) for enhanced security")
 	uiCmd.PersistentFlags().StringVar(&uiParams.browser, "browser", "", "Browser to use (default: system default, options: chrome, firefox, safari)")
