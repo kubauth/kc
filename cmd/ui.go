@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -110,7 +111,9 @@ func performAuthorizationCodeFlow(ctx context.Context, provider *oidc.Provider, 
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate code verifier: %w", err)
 		}
-		codeChallenge = base64.RawURLEncoding.EncodeToString([]byte(codeVerifier))
+		// Generate code challenge using SHA256 hash of the verifier (RFC 7636)
+		hash := sha256.Sum256([]byte(codeVerifier))
+		codeChallenge = base64.RawURLEncoding.EncodeToString(hash[:])
 		logger.Debug("PKCE enabled", "codeChallenge", codeChallenge[:10]+"...")
 	} else {
 		logger.Debug("PKCE disabled")
