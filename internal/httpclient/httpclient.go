@@ -5,7 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
-	"getok/internal/misc"
+	"kc/internal/misc"
 	"net"
 	"net/http"
 	"net/http/httputil"

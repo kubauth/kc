@@ -21,7 +21,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"getok/internal/misc"
+	"kc/internal/misc"
 	"log/slog"
 	"os"
 	"strings"
@@ -55,8 +55,8 @@ var jwtCmd = &cobra.Command{
 The JWT token can be provided as a command line argument or read from stdin.
 
 Examples:
-  getok jwtd eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-  echo "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." | getok jwtd`,
+  kc jwtd eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+  echo "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." | kc jwtd`,
 
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {

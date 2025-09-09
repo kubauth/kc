@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"getok/internal/httpclient"
-	"getok/internal/misc"
+	"kc/internal/httpclient"
+	"kc/internal/misc"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -42,9 +42,9 @@ func initOidcParams(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringArrayVar(&oidcParams.httpClientConfig.RootCaPaths, "caFile", []string{}, "Root CA path(s) for validation of issuer URL.")
 	cmd.PersistentFlags().StringArrayVar(&oidcParams.scopes, "scope", []string{"openid", "profile"}, "Requested scopes.")
 
-	cmd.PersistentFlags().StringVarP(&oidcParams.httpClientConfig.BaseURL, "issuerURL", "i", "", "issuer URL (Env:GETOK_ISSUER_URL)")
-	cmd.PersistentFlags().StringVarP(&oidcParams.clientId, "clientId", "c", "", "Client ID (Env:GETOK_CLIENT_ID)")
-	cmd.PersistentFlags().StringVarP(&oidcParams.clientSecret, "clientSecret", "s", "", "Client Secret (Env:GETOK_CLIENT_SECRET)")
+	cmd.PersistentFlags().StringVarP(&oidcParams.httpClientConfig.BaseURL, "issuerURL", "i", "", "issuer URL (Env:KC_ISSUER_URL)")
+	cmd.PersistentFlags().StringVarP(&oidcParams.clientId, "clientId", "c", "", "Client ID (Env:KC_CLIENT_ID)")
+	cmd.PersistentFlags().StringVarP(&oidcParams.clientSecret, "clientSecret", "s", "", "Client Secret (Env:KC_CLIENT_SECRET)")
 	cmd.PersistentFlags().BoolVar(&oidcParams.onlyIDToken, "onlyIDToken", false, "Output only ID token")
 	cmd.PersistentFlags().BoolVar(&oidcParams.onlyAccessToken, "onlyAccessToken", false, "Output only Access token")
 
@@ -56,9 +56,9 @@ func setupOidc(cmd *cobra.Command) (*slog.Logger, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not create logger: %w", err)
 	}
-	adjustStringParam(cmd.PersistentFlags(), "issuerURL", "GETOK_ISSUER_URL", &oidcParams.httpClientConfig.BaseURL)
-	adjustStringParam(cmd.PersistentFlags(), "clientId", "GETOK_CLIENT_ID", &oidcParams.clientId)
-	adjustStringParam(cmd.PersistentFlags(), "clientSecret", "GETOK_CLIENT_SECRET", &oidcParams.clientSecret)
+	adjustStringParam(cmd.PersistentFlags(), "issuerURL", "KC_ISSUER_URL", &oidcParams.httpClientConfig.BaseURL)
+	adjustStringParam(cmd.PersistentFlags(), "clientId", "KC_CLIENT_ID", &oidcParams.clientId)
+	adjustStringParam(cmd.PersistentFlags(), "clientSecret", "KC_CLIENT_SECRET", &oidcParams.clientSecret)
 
 	if oidcParams.httpClientConfig.BaseURL == "" {
 		return logger, fmt.Errorf("issuer URL cannot be empty")

@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"getok/internal/httpclient"
-	"getok/internal/misc"
 	"io"
+	"kc/internal/httpclient"
+	"kc/internal/misc"
 	"log/slog"
 	"net/http"
 	"os"
@@ -27,7 +27,7 @@ var logoutParams struct {
 
 func init() {
 	logoutCmd.PersistentFlags().StringVar(&logoutParams.browser, "browser", "", "Browser to use (default: system default, options: chrome, firefox, safari)")
-	logoutCmd.PersistentFlags().StringVarP(&logoutParams.issuerURL, "issuerURL", "i", "", "issuer URL (Env:GETOK_ISSUER_URL)")
+	logoutCmd.PersistentFlags().StringVarP(&logoutParams.issuerURL, "issuerURL", "i", "", "issuer URL (Env:KC_ISSUER_URL)")
 	logoutCmd.PersistentFlags().StringVarP(&logoutParams.logLevel, "logLevel", "l", "INFO", "Log level(DEBUG, INFO, WARN, ERROR)")
 	logoutCmd.PersistentFlags().StringVar(&logoutParams.logMode, "logMode", "text", "Log mode ('text' or 'json')")
 	logoutCmd.PersistentFlags().BoolVar(&logoutParams.dumpClientExchanges, "dumpClientExchanges", false, "Dump http client req/resp")
@@ -94,7 +94,7 @@ func setupLogout(cmd *cobra.Command) (*slog.Logger, *httpclient.Config, error) {
 	}
 
 	// Handle environment variables
-	adjustStringParam(cmd.PersistentFlags(), "issuerURL", "GETOK_ISSUER_URL", &logoutParams.issuerURL)
+	adjustStringParam(cmd.PersistentFlags(), "issuerURL", "KC_ISSUER_URL", &logoutParams.issuerURL)
 
 	if logoutParams.issuerURL == "" {
 		return logger, nil, fmt.Errorf("issuer URL cannot be empty")

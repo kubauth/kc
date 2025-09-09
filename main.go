@@ -16,7 +16,7 @@ limitations under the License.
 
 package main
 
-import "getok/cmd"
+import "kc/cmd"
 
 func main() {
 	cmd.Execute()

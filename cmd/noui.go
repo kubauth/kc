@@ -5,8 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"getok/internal/httpclient"
 	"io"
+	"kc/internal/httpclient"
 	"net/http"
 	"net/url"
 	"os"
@@ -27,8 +27,8 @@ var noUiParams struct {
 
 func init() {
 	initOidcParams(noUiCmd)
-	noUiCmd.PersistentFlags().StringVarP(&noUiParams.login, "login", "u", "", "User login (Env:GETOK_USER_LOGIN)")
-	noUiCmd.PersistentFlags().StringVarP(&noUiParams.password, "password", "p", "", "User password (Env:GETOK_USER_PASSWORD)")
+	noUiCmd.PersistentFlags().StringVarP(&noUiParams.login, "login", "u", "", "User login (Env:KC_USER_LOGIN)")
+	noUiCmd.PersistentFlags().StringVarP(&noUiParams.password, "password", "p", "", "User password (Env:KC_USER_PASSWORD)")
 }
 
 var noUiCmd = &cobra.Command{
@@ -93,7 +93,7 @@ var noUiCmd = &cobra.Command{
 
 func inputCredentials(login, password string) (string, string) {
 	if login == "" {
-		login = os.Getenv("GETOK_USER_LOGIN")
+		login = os.Getenv("KC_USER_LOGIN")
 		if login == "" {
 			_, err := fmt.Fprint(os.Stderr, "Login:")
 			if err != nil {
@@ -109,7 +109,7 @@ func inputCredentials(login, password string) (string, string) {
 		}
 	}
 	if password == "" {
-		password = os.Getenv("GETOK_USER_PASSWORD")
+		password = os.Getenv("KC_USER_PASSWORD")
 		if password == "" {
 			password = inputPassword("Password:")
 		}

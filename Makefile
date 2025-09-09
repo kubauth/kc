@@ -35,11 +35,9 @@ version: ## Set version in binary
 
 ##@ Build
 
-.PHONY: build
-build:  build-getok  ## Build binaries
 
-.PHONY: build-getok
-build-getok: ## Build getok binaries with dependencies
-	CGO_ENABLED=0 go build -o bin/getok main.go
+.PHONY: build
+build: ## Build kc binary with dependencies
+	CGO_ENABLED=0 go build -o bin/kc main.go
 
 

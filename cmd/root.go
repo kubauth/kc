@@ -39,8 +39,8 @@ func init() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "getok",
-	Short: "Get Token tool",
+	Use:   "kc",
+	Short: "Kubauth companion tool",
 }
 
 var debug = true

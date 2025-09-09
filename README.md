@@ -1,5 +1,5 @@
-# getok 
+# kc command 
 
-OIDC client tool aimed to fetch access and oidc token (jwt)
+OIDC client tool aimed to fetch access token and oidc token (jwt)
 
 

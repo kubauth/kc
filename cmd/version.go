@@ -18,8 +18,8 @@ package cmd
 
 import (
 	"fmt"
-	"getok/global"
 	"github.com/spf13/cobra"
+	"kc/global"
 )
 
 var versionParams struct {
