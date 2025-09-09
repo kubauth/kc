@@ -35,6 +35,7 @@ func init() {
 	rootCmd.AddCommand(uiCmd)
 	rootCmd.AddCommand(jwtCmd)
 	rootCmd.AddCommand(logoutCmd)
+	rootCmd.AddCommand(hashCmd)
 
 }
 
