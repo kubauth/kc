@@ -122,7 +122,7 @@ func inputPassword(prompt string) string {
 	if err != nil {
 		panic(err)
 	}
-	bytePassword, err2 := terminal.ReadPassword(syscall.Stdin)
+	bytePassword, err2 := terminal.ReadPassword(int(syscall.Stdin)) // cast to int is redundant, except for windows target
 	if err2 != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Unable to access stdin to input password. Try login with '--login' and '--password' options.\n\n")
 		os.Exit(18)

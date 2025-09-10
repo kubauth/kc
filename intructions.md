@@ -40,4 +40,8 @@ Create a logout command which will
 Use the 'openBrowser()' function of ui.go by moving it in common.go
 Use the same code pattern than others commands.
 
-for logout function, do not use oidcParams but duplicate only the needed flgas.
+for logout function, do not use oidcParams but duplicate only the needed flags
+
+write a README.md for this 'kc' command line interface
+
+In this README, add download from https://github.com/kubauth/kc/releases/tag/0.1.0 in the installation part

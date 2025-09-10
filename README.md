@@ -18,11 +18,34 @@
 
 ## Installation
 
+### Download Pre-built Binary
+
+Download the latest release from GitHub:
+
+```bash
+# Download the latest release (replace with your OS/architecture)
+curl -L -o kc https://github.com/kubauth/kc/releases/download/0.1.0/kc-linux-amd64
+
+# Make it executable
+chmod +x kc
+
+# Move to your PATH (optional)
+sudo mv kc /usr/local/bin/
+```
+
+**Available binaries:**
+- `kc-linux-amd64` - Linux 64-bit
+- `kc-darwin-amd64` - macOS Intel
+- `kc-darwin-arm64` - macOS Apple Silicon
+- `kc-windows-amd64.exe` - Windows 64-bit
+
+Visit [releases page](https://github.com/kubauth/kc/releases/tag/0.1.0) for all available downloads.
+
 ### Building from Source
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/kubauth/kc.git
 cd kc
 
 # Build the binary
@@ -33,7 +56,7 @@ make build
 
 ### Prerequisites
 
-- Go 1.24.6 or later
+- Go 1.24.6 or later (for building from source)
 - Internet connection for OIDC provider communication
 
 ## Usage

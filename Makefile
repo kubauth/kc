@@ -41,3 +41,14 @@ build: ## Build kc binary with dependencies
 	CGO_ENABLED=0 go build -o bin/kc main.go
 
 
+##@ Release
+
+# git tag X.X.X
+# git push origin tag X.X.X
+#
+# export GITHUB_TOKEN=
+# make cli-release
+
+.PHONY: release
+release:		## Upload a release of kc cli client
+	goreleaser release --clean --skip validate
