@@ -16,10 +16,9 @@ import (
 )
 
 var logoutParams struct {
+	logConfig           misc.LogConfig
 	browser             string
 	issuerURL           string
-	logLevel            string
-	logMode             string
 	dumpClientExchanges bool
 	insecureSkipVerify  bool
 	rootCaPaths         []string
@@ -28,8 +27,8 @@ var logoutParams struct {
 func init() {
 	logoutCmd.PersistentFlags().StringVar(&logoutParams.browser, "browser", "", "Browser to use (default: system default, options: chrome, firefox, safari)")
 	logoutCmd.PersistentFlags().StringVarP(&logoutParams.issuerURL, "issuerURL", "i", "", "issuer URL (Env:KC_ISSUER_URL)")
-	logoutCmd.PersistentFlags().StringVarP(&logoutParams.logLevel, "logLevel", "l", "INFO", "Log level(DEBUG, INFO, WARN, ERROR)")
-	logoutCmd.PersistentFlags().StringVar(&logoutParams.logMode, "logMode", "text", "Log mode ('text' or 'json')")
+	logoutCmd.PersistentFlags().StringVarP(&logoutParams.logConfig.Level, "logLevel", "l", "INFO", "Log level(DEBUG, INFO, WARN, ERROR)")
+	logoutCmd.PersistentFlags().StringVar(&logoutParams.logConfig.Mode, "logMode", "text", "Log mode ('text' or 'json')")
 	logoutCmd.PersistentFlags().BoolVar(&logoutParams.dumpClientExchanges, "dumpClientExchanges", false, "Dump http client req/resp")
 	logoutCmd.PersistentFlags().BoolVar(&logoutParams.insecureSkipVerify, "insecureSkipVerify", false, "Don't validate issuer certificate")
 	logoutCmd.PersistentFlags().StringArrayVar(&logoutParams.rootCaPaths, "caFile", []string{}, "Root CA path(s) for validation of issuer URL.")
@@ -84,11 +83,7 @@ var logoutCmd = &cobra.Command{
 // setupLogout sets up the logger and HTTP client configuration for logout command
 func setupLogout(cmd *cobra.Command) (*slog.Logger, *httpclient.Config, error) {
 	// Setup logging
-	logConfig := misc.LogConfig{
-		Level: logoutParams.logLevel,
-		Mode:  logoutParams.logMode,
-	}
-	logger, err := misc.NewLogger(&logConfig)
+	logger, err := misc.NewLogger(&logoutParams.logConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not create logger: %w", err)
 	}
