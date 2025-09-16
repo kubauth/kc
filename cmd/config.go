@@ -15,30 +15,9 @@ import (
 	"kc/internal/misc"
 	"net/http"
 	"os"
-	osuser "os/user"
-	"path/filepath"
+	"strconv"
 	"strings"
 )
-
-/*
-
-Here is the target generated user config, part of kubeconfig file
-ref: https://kubernetes.io/docs/reference/access-authn-authz/authentication/#option-1-oidc-authenticator
-
-	users:
-	- name: mmosley
-	  user:
-		auth-provider:
-		  name: oidc
-		  config:
-			client-id: kubernetes
-			client-secret: 1db158f6-177d-4d9c-8a8b-d36869918ec5
-			id-token: eyJraWQiOiJDTj1vaWRjaWRwLnRyZW1vbG8ubGFuLCBPVT1EZW1vLCBPPVRybWVvbG8gU2VjdXJpdHksIEw9QXJsaW5ndG9uLCBTVD1WaXJnaW5pYSwgQz1VUy1DTj1rdWJlLWNhLTEyMDIxNDc5MjEwMzYwNzMyMTUyIiwiYWxnIjoiUlMyNTYifQ.eyJpc3MiOiJodHRwczovL29pZGNpZHAudHJlbW9sby5sYW46ODQ0My9hdXRoL2lkcC9PaWRjSWRQIiwiYXVkIjoia3ViZXJuZXRlcyIsImV4cCI6MTQ4MzU0OTUxMSwianRpIjoiMm96US15TXdFcHV4WDlHZUhQdy1hZyIsImlhdCI6MTQ4MzU0OTQ1MSwibmJmIjoxNDgzNTQ5MzMxLCJzdWIiOiI0YWViMzdiYS1iNjQ1LTQ4ZmQtYWIzMC0xYTAxZWU0MWUyMTgifQ.w6p4J_6qQ1HzTG9nrEOrubxIMb9K5hzcMPxc9IxPx2K4xO9l-oFiUw93daH3m5pluP6K7eOE6txBuRVfEcpJSwlelsOsW8gb8VJcnzMS9EnZpeA0tW_p-mnkFc3VcfyXuhe5R3G7aa5d8uHv70yJ9Y3-UhjiN9EhpMdfPAoEB9fYKKkJRzF7utTTIPGrSaSU6d2pcpfYKaxIwePzEkT4DfcQthoZdy9ucNvvLoi1DIC-UocFD8HLs8LYKEqSxQvOcvnThbObJ9af71EwmuE21fO5KzMW20KtAeget1gnldOosPtz1G5EwvaQ401-RPQzPGMVBld0_zMCAwZttJ4knw
-			idp-certificate-authority: /root/ca.pem
-			idp-issuer-url: https://oidcidp.tremolo.lan:8443/auth/idp/OidcIdP
-			refresh-token: q1bKLFOyUiosTfawzA93TzZIDzH2TNa2SMm0zEiPKTUwME6BkEo6Sql5yUWVBSWpKUGphaWpxSVAfekBOZbBhaEW+VlFUeVRGcluyVF5JT4+haZmPsluFoFu5XkpXk5BXq
-
-*/
 
 var configParams struct {
 	logConfig            misc.LogConfig
@@ -50,6 +29,10 @@ var configParams struct {
 	noContextSwitch      bool
 	force                bool
 	kubeconfigPath       string
+	standalone           bool
+	scopes               []string
+	grantType            string
+	pkce                 string
 }
 
 func init() {
@@ -69,6 +52,27 @@ func init() {
 
 	configCmd.PersistentFlags().StringVar(&configParams.kubeconfigPath, "kubeconfig", "", "kubeconfig file path. Override default configuration.")
 
+	configCmd.PersistentFlags().BoolVar(&configParams.standalone, "standalone", false, "Use kubelogin in standalone mode")
+	configCmd.PersistentFlags().StringArrayVar(&configParams.scopes, "scope", []string{}, "Extra scopes")
+	configCmd.PersistentFlags().StringVar(&configParams.grantType, "grantType", "auto", "Grant type (auto|authcode|password) (default: auto)")
+	//configCmd.PersistentFlags().StringVar(&configParams.grantType, "grantType", "auto", "Grant type (auto|authcode|authcode-keyboard|password|device-code|client-credentials) (default: auto)")
+	configCmd.PersistentFlags().StringVar(&configParams.pkce, "pkce", "auto", "PKCE (auto|no|S256) (default: auto)")
+
+}
+
+var validGrantTypes = map[string]bool{
+	"auto":               true,
+	"authcode":           true,
+	"authcode-keyboard":  true,
+	"password":           true,
+	"device-code":        true,
+	"client-credentials": true,
+}
+
+var validPKCETypes = map[string]bool{
+	"auto": true,
+	"no":   true,
+	"S256": true,
 }
 
 var configCmd = &cobra.Command{
@@ -85,6 +89,12 @@ var configCmd = &cobra.Command{
 			url := args[0]
 			if !(strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")) {
 				url = "https://" + url
+			}
+			if _, ok := validGrantTypes[configParams.grantType]; !ok {
+				return fmt.Errorf("invalid grant type: %s", configParams.grantType)
+			}
+			if _, ok := validPKCETypes[configParams.pkce]; !ok {
+				return fmt.Errorf("invalid pkce parameter: %s", configParams.pkce)
 			}
 			ctx := logr.NewContextWithSlogLogger(context.Background(), logger)
 			kubeConfigResponse, err := getRemoteKubeconfigInfo(ctx, url)
@@ -105,12 +115,7 @@ var configCmd = &cobra.Command{
 			if configParams.namespaceOverride != "" {
 				kubeConfigResponse.Context.Namespace = configParams.namespaceOverride
 			}
-			// ------------------------------------------------ Prepare some values
-			// As the target structure require a path for the issuer CA, we must save it in some place.
-			issuerCaPath, err := saveIssuerCA(kubeConfigResponse.Oidc.IssuerURL, kubeConfigResponse.Oidc.IssuerCaData)
-			if err != nil {
-				return err
-			}
+			// ---------------------------------------------------- Define some entity names
 			contextName := kubeConfigResponse.Context.Name
 			clusterName := contextName + "-cluster"
 			userName := contextName + "-user"
@@ -170,18 +175,48 @@ var configCmd = &cobra.Command{
 			if rawConfig.CurrentContext == "" || !configParams.noContextSwitch {
 				rawConfig.CurrentContext = contextName
 			}
-			rawConfig.AuthInfos[userName] = &api.AuthInfo{
-				AuthProvider: &api.AuthProviderConfig{
-					Name: "oidc",
-					Config: map[string]string{
-						"issuer-url":                kubeConfigResponse.Oidc.IssuerURL,
-						"client-id":                 kubeConfigResponse.Oidc.ClientId,
-						"client-secret":             kubeConfigResponse.Oidc.ClientSecret,
-						"idp-certificate-authority": issuerCaPath,
-						"id-token":                  "wait for login",
-						"refresh-token":             "wait for login",
+			if configParams.standalone {
+				scopes := configParams.scopes
+				scopes = addScope(scopes, "offline") // NB: openid is added by kubelogin
+				rawConfig.AuthInfos[userName] = &api.AuthInfo{
+					AuthProvider: &api.AuthProviderConfig{
+						Name: "oidc",
+						Config: map[string]string{
+							"idp-issuer-url":                 kubeConfigResponse.Oidc.IssuerURL,
+							"client-id":                      kubeConfigResponse.Oidc.ClientId,
+							"client-secret":                  kubeConfigResponse.Oidc.ClientSecret,
+							"idp-certificate-authority-data": kubeConfigResponse.Oidc.IssuerCaData,
+							"extra-scopes":                   strings.Join(scopes, ","),
+						},
 					},
-				},
+				}
+			} else {
+				scopes := configParams.scopes
+				scopes = addScope(scopes, "offline") // NB: openid is added by kubelogin
+				rawConfig.AuthInfos[userName] = &api.AuthInfo{
+					Exec: &api.ExecConfig{
+						APIVersion:      "client.authentication.k8s.io/v1",
+						Command:         "kubectl",
+						InteractiveMode: "IfAvailable",
+						Args: []string{
+							"oidc-login",
+							"get-token",
+							"--oidc-issuer-url=" + kubeConfigResponse.Oidc.IssuerURL,
+							"--oidc-client-id=" + kubeConfigResponse.Oidc.ClientId,
+							"--oidc-client-secret=" + kubeConfigResponse.Oidc.ClientSecret,
+							"--certificate-authority-data=" + kubeConfigResponse.Oidc.IssuerCaData,
+							"--insecure-skip-tls-verify=" + strconv.FormatBool(kubeConfigResponse.Oidc.InsecureSkipVerify),
+							"--grant-type=" + configParams.grantType,
+							"--oidc-extra-scope=" + strings.Join(scopes, ","),
+							"--oidc-pkce-method=" + configParams.pkce,
+						},
+					},
+				}
+				if configParams.grantType == "authcode-keyboard" {
+					rawConfig.AuthInfos[userName].Exec.Args = append(rawConfig.AuthInfos[userName].Exec.Args, "--oidc-redirect-url=http://localhost:8000")
+					rawConfig.AuthInfos[userName].Exec.Args = append(rawConfig.AuthInfos[userName].Exec.Args, "--listen-address=http://localhost:8000")
+				}
+
 			}
 			return clientcmd.ModifyConfig(configAccess, rawConfig, false)
 		}()
@@ -193,27 +228,13 @@ var configCmd = &cobra.Command{
 	},
 }
 
-func saveIssuerCA(issuerURL string, issuerCaData string) (string, error) {
-	// ----------------- Build the path
-	usr, err := osuser.Current()
-	if err != nil {
-		return "", err
+func addScope(scopes []string, newScope string) []string {
+	for _, scope := range scopes {
+		if scope == newScope {
+			return scopes
+		}
 	}
-	dashed := strings.Replace(strings.Replace(strings.Replace(issuerURL, ":", "-", -1), "/", "-", -1), ".", "-", -1)
-	caPath := filepath.Join(usr.HomeDir, ".kube/cache/kubauth/issuers-ca", dashed, "cert.pem")
-	err = misc.EnsureDir(filepath.Dir(caPath))
-	if err != nil {
-		return "", err
-	}
-	issuerCa, err := base64.StdEncoding.DecodeString(issuerCaData)
-	if err != nil {
-		return "", err
-	}
-	err = os.WriteFile(caPath, issuerCa, 0644)
-	if err != nil {
-		return "", err
-	}
-	return caPath, nil
+	return append(scopes, newScope)
 }
 
 func getRemoteKubeconfigInfo(ctx context.Context, url string) (*proto.KubeconfigConfig, error) {
