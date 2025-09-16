@@ -26,23 +26,23 @@ import (
 	"golang.org/x/oauth2"
 )
 
-var uiParams struct {
+var tokenParams struct {
 	httpSrvConfig httpsrv.Config
 	usePKCE       bool
 	browser       string
 }
 
 func init() {
-	initOidcParams(uiCmd)
-	uiCmd.PersistentFlags().IntVar(&uiParams.httpSrvConfig.DumpExchanges, "dumpServerExchanges", 0, "Dump http server req/resp (0, 1, 2 or 3)")
-	uiCmd.PersistentFlags().IntVarP(&uiParams.httpSrvConfig.BindPort, "bindPort", "p", 9921, "Local server Bind port")
-	uiCmd.PersistentFlags().BoolVar(&uiParams.usePKCE, "pkce", false, "Use PKCE (Proof Key for Code Exchange) for enhanced security")
-	uiCmd.PersistentFlags().StringVar(&uiParams.browser, "browser", "", "Browser to use (default: system default, options: chrome, firefox, safari)")
+	initOidcParams(tokenCmd)
+	tokenCmd.PersistentFlags().IntVar(&tokenParams.httpSrvConfig.DumpExchanges, "dumpServerExchanges", 0, "Dump http server req/resp (0, 1, 2 or 3)")
+	tokenCmd.PersistentFlags().IntVarP(&tokenParams.httpSrvConfig.BindPort, "bindPort", "p", 9921, "Local server Bind port")
+	tokenCmd.PersistentFlags().BoolVar(&tokenParams.usePKCE, "pkce", false, "Use PKCE (Proof Key for Code Exchange) for enhanced security")
+	tokenCmd.PersistentFlags().StringVar(&tokenParams.browser, "browser", "", "Browser to use (default: system default, options: chrome, firefox, safari)")
 }
 
-var uiCmd = &cobra.Command{
-	Use:   "ui",
-	Short: "UI: Get token using authorisation code flow",
+var tokenCmd = &cobra.Command{
+	Use:   "token",
+	Short: "token: Get token using authorisation code flow (Using browser)",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 
@@ -51,8 +51,8 @@ var uiCmd = &cobra.Command{
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		uiParams.httpSrvConfig.BindAddr = "127.0.0.1"
-		uiParams.httpSrvConfig.Tls = false
+		tokenParams.httpSrvConfig.BindAddr = "127.0.0.1"
+		tokenParams.httpSrvConfig.Tls = false
 
 		logger.Debug("Start with UI processing", "issuer", oidcParams.httpClientConfig.BaseURL)
 
@@ -93,6 +93,8 @@ var uiCmd = &cobra.Command{
 
 		// Output tokens based on requested format
 		outputTokens(tokenResponse)
+		// Give some time to server
+		time.Sleep(time.Millisecond * 500)
 	},
 }
 
@@ -106,7 +108,7 @@ func performAuthorizationCodeFlow(ctx context.Context, provider *oidc.Provider, 
 
 	// Generate PKCE parameters if enabled
 	var codeVerifier, codeChallenge string
-	if uiParams.usePKCE {
+	if tokenParams.usePKCE {
 		codeVerifier, err = generateRandomString(43)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate code verifier: %w", err)
@@ -120,7 +122,7 @@ func performAuthorizationCodeFlow(ctx context.Context, provider *oidc.Provider, 
 	}
 
 	// Build redirect URI
-	redirectURI := fmt.Sprintf("http://%s:%d/callback", uiParams.httpSrvConfig.BindAddr, uiParams.httpSrvConfig.BindPort)
+	redirectURI := fmt.Sprintf("http://%s:%d/callback", tokenParams.httpSrvConfig.BindAddr, tokenParams.httpSrvConfig.BindPort)
 
 	// Configure OAuth2
 	oauth2Config := oauth2.Config{
@@ -133,7 +135,7 @@ func performAuthorizationCodeFlow(ctx context.Context, provider *oidc.Provider, 
 
 	// Build authorization URL, conditionally with PKCE
 	var authURL string
-	if uiParams.usePKCE {
+	if tokenParams.usePKCE {
 		authURL = oauth2Config.AuthCodeURL(state,
 			oauth2.SetAuthURLParam("code_challenge", codeChallenge),
 			oauth2.SetAuthURLParam("code_challenge_method", "S256"),
@@ -186,7 +188,7 @@ func performAuthorizationCodeFlow(ctx context.Context, provider *oidc.Provider, 
 		logger.Debug("Authorization code received", "code", code[:10]+"...")
 
 		// Exchange code for tokens
-		tokenResponse, serverError = exchangeCodeForTokens(ctx, oauth2Config, code, codeVerifier, uiParams.usePKCE, logger)
+		tokenResponse, serverError = exchangeCodeForTokens(ctx, oauth2Config, code, codeVerifier, tokenParams.usePKCE, logger)
 		if serverError != nil {
 			http.Error(w, fmt.Sprintf("Token exchange failed: %v", serverError), http.StatusInternalServerError)
 			return
@@ -230,7 +232,7 @@ func performAuthorizationCodeFlow(ctx context.Context, provider *oidc.Provider, 
 	})
 
 	// Start HTTP server
-	httpServer := httpsrv.New("oauth-callback", &uiParams.httpSrvConfig, mux)
+	httpServer := httpsrv.New("oauth-callback", &tokenParams.httpSrvConfig, mux)
 
 	// Start server in goroutine
 	serverCtx, serverCancel := context.WithCancel(ctx)
@@ -248,9 +250,9 @@ func performAuthorizationCodeFlow(ctx context.Context, provider *oidc.Provider, 
 	// Open browser
 	//fmt.Printf("Opening browser to: %s\n", authURL)
 	_, _ = fmt.Fprintf(os.Stderr, "If browser doesn't open automatically, visit: http://%s:%d\n",
-		uiParams.httpSrvConfig.BindAddr, uiParams.httpSrvConfig.BindPort)
+		tokenParams.httpSrvConfig.BindAddr, tokenParams.httpSrvConfig.BindPort)
 
-	if err := openBrowser(authURL, uiParams.browser); err != nil {
+	if err := openBrowser(authURL, tokenParams.browser); err != nil {
 		logger.Debug("Failed to open browser automatically", "error", err)
 	}
 

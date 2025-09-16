@@ -20,19 +20,19 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-var noUiParams struct {
+var tokenNuiParams struct {
 	login    string
 	password string
 }
 
 func init() {
-	initOidcParams(noUiCmd)
-	noUiCmd.PersistentFlags().StringVarP(&noUiParams.login, "login", "u", "", "User login (Env:KC_USER_LOGIN)")
-	noUiCmd.PersistentFlags().StringVarP(&noUiParams.password, "password", "p", "", "User password (Env:KC_USER_PASSWORD)")
+	initOidcParams(tokenNuiCmd)
+	tokenNuiCmd.PersistentFlags().StringVarP(&tokenNuiParams.login, "login", "u", "", "User login (Env:KC_USER_LOGIN)")
+	tokenNuiCmd.PersistentFlags().StringVarP(&tokenNuiParams.password, "password", "p", "", "User password (Env:KC_USER_PASSWORD)")
 }
 
-var noUiCmd = &cobra.Command{
-	Use:   "noui",
+var tokenNuiCmd = &cobra.Command{
+	Use:   "token-nui",
 	Short: "No UI: Get token using Resource Owner Password Credentials (ROPC)",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -61,8 +61,8 @@ var noUiCmd = &cobra.Command{
 		}
 		endpoints := provider.Endpoint()
 		logger.Debug("OIDC provider initialized", "AuthURL", endpoints.AuthURL, "tokenURL", endpoints.TokenURL, "UserInfoURL", provider.UserInfoEndpoint())
-		login := noUiParams.login
-		password := noUiParams.password
+		login := tokenNuiParams.login
+		password := tokenNuiParams.password
 		for login == "" || password == "" {
 			login, password = inputCredentials(login, password)
 		}

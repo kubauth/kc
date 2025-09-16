@@ -31,8 +31,8 @@ func init() {
 func init() {
 
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.AddCommand(noUiCmd)
-	rootCmd.AddCommand(uiCmd)
+	rootCmd.AddCommand(tokenNuiCmd)
+	rootCmd.AddCommand(tokenCmd)
 	rootCmd.AddCommand(jwtCmd)
 	rootCmd.AddCommand(logoutCmd)
 	rootCmd.AddCommand(hashCmd)
