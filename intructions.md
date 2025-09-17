@@ -45,3 +45,19 @@ for logout function, do not use oidcParams but duplicate only the needed flags
 write a README.md for this 'kc' command line interface
 
 In this README, add download from https://github.com/kubauth/kc/releases/tag/0.1.0 in the installation part
+
+Some command has been modified, some has been renamed and some has been added. Rewrite the README.md
+
+
+About README.md
+- token and token-ui main goal is to provide OIDC token, aimed to be injected in whatever application.
+- config command require a service to provide configuration information. See https://github.com/kubauth/okit
+- There is two groups of command.
+  - config and whoami which are intended to works with kubectl and kubelogin to authenticate k8s cluster users and admin.
+  - token and token-ui which manage tokens. (These command may fetch some info in kubeconfig, but this is just a nice to have. They can works independently) 
+
+About README.md
+- logout command will also clear kubectl/kubelogin authentication
+- kc whoami will works after user has been authenticated
+- in workflow example, Token Management for Applications, use id_token
+

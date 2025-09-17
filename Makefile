@@ -1,4 +1,4 @@
-APP_VERSION ?= 0.1.0-snapshot
+APP_VERSION ?= 0.1.1-snapshot
 
 
 BUILD_TS ?= $(shell date -u +%Y%m%d.%H%M%S)
