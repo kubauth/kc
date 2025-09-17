@@ -9,6 +9,8 @@ export KUBECONFIG=
 make build && ./bin/kc token --issuerURL https://kubauth.ingress.kubo5.mbp --clientId weboidc0 --clientSecret my-secret
 
 
+make build && ./bin/kc logout
+
 ```
 
 

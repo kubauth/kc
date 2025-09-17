@@ -127,6 +127,9 @@ var configCmd = &cobra.Command{
 			configOverrides := &clientcmd.ConfigOverrides{}
 			kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
 			rawConfig, err := kubeConfig.RawConfig()
+			if err != nil {
+				return err
+			}
 			configAccess := kubeConfig.ConfigAccess()
 
 			// logger.Debug("ConfigAccess", "AuthInfos", rawConfig.AuthInfos["oidc-kubo6-user"])

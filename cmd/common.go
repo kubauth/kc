@@ -64,7 +64,7 @@ func setupOidc(cmd *cobra.Command) (*slog.Logger, error) {
 	adjustStringParam(cmd.PersistentFlags(), "clientId", "KC_CLIENT_ID", &oidcParams.clientId)
 	adjustStringParam(cmd.PersistentFlags(), "clientSecret", "KC_CLIENT_SECRET", &oidcParams.clientSecret)
 
-	// If some parameters are missing, try to fetch from current kubconfig
+	// If some parameters are missing, try to fetch from current kubeconfig
 	if oidcParams.httpClientConfig.BaseURL == "" || len(oidcParams.httpClientConfig.RootCaPaths) == 0 {
 		configInfo, err := getConfigInfo(oidcParams.kubeconfig, oidcParams.context, logger)
 		if err != nil {

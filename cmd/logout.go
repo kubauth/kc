@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"k8s.io/client-go/tools/clientcmd"
 	"kc/internal/httpclient"
 	"kc/internal/misc"
-	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/cobra"
@@ -22,6 +23,8 @@ var logoutParams struct {
 	dumpClientExchanges bool
 	insecureSkipVerify  bool
 	rootCaPaths         []string
+	kubeconfig          string
+	context             string
 }
 
 func init() {
@@ -32,6 +35,9 @@ func init() {
 	logoutCmd.PersistentFlags().BoolVar(&logoutParams.dumpClientExchanges, "dumpClientExchanges", false, "Dump http client req/resp")
 	logoutCmd.PersistentFlags().BoolVar(&logoutParams.insecureSkipVerify, "insecureSkipVerify", false, "Don't validate issuer certificate")
 	logoutCmd.PersistentFlags().StringArrayVar(&logoutParams.rootCaPaths, "caFile", []string{}, "Root CA path(s) for validation of issuer URL.")
+	logoutCmd.PersistentFlags().StringVar(&logoutParams.kubeconfig, "kubeconfig", "", "kubeconfig file to fetch issuerURL and CA (default env:KUBECONFIG or $HOME/.kube/config)")
+	logoutCmd.PersistentFlags().StringVar(&logoutParams.context, "context", "", "Context in kubeconfig file to fetch issuerURL and CA (Override kubeconfig default context")
+
 }
 
 var logoutCmd = &cobra.Command{
@@ -39,71 +45,97 @@ var logoutCmd = &cobra.Command{
 	Short: "Logout: Open browser to end_session_endpoint for logout",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		logger, httpClientConfig, err := setupLogout(cmd)
+		err := func() error {
+			logger, err := misc.NewLogger(&logoutParams.logConfig)
+			if err != nil {
+				return fmt.Errorf("could not create logger: %w", err)
+			}
+
+			// Handle environment variables
+			adjustStringParam(cmd.PersistentFlags(), "issuerURL", "KC_ISSUER_URL", &logoutParams.issuerURL)
+
+			configInfo, err := getConfigInfo(logoutParams.kubeconfig, logoutParams.context, logger)
+			if err != nil {
+				return err
+			}
+			var rootCaDatas []string = nil
+			if configInfo != nil {
+				logger.Debug("Completing OIDC configuration from kubeconfig")
+				if logoutParams.issuerURL == "" {
+					logoutParams.issuerURL = configInfo.issuerURL
+				}
+				if len(logoutParams.rootCaPaths) == 0 {
+					rootCaDatas = []string{configInfo.caData}
+				}
+				if !logoutParams.insecureSkipVerify {
+					logoutParams.insecureSkipVerify = configInfo.insecureSkipTlsVerify
+				}
+				if configInfo.standalone {
+					fmt.Printf("Cleaning oidc auth provider token in kubeconfig if any\n")
+					err = standaloneLogout(logoutParams.kubeconfig, logoutParams.context)
+					if err != nil {
+						logger.Error("Error on standalone mode logout", "error", err)
+					}
+				} else {
+					fmt.Printf("CLeaning kubelogin OIDC configuration if any\n")
+					err := exec.Command("kubectl", "oidc-login", "clean").Start()
+					if err != nil {
+						logger.Error("Could not clean kubelogin OIDC configuration", "error", err)
+					}
+				}
+			}
+
+			if logoutParams.issuerURL == "" {
+				return fmt.Errorf("issuer URL cannot be empty")
+			}
+
+			// Setup HTTP client configuration
+			httpClientConfig := &httpclient.Config{
+				BaseURL:            logoutParams.issuerURL,
+				DumpExchanges:      logoutParams.dumpClientExchanges,
+				InsecureSkipVerify: logoutParams.insecureSkipVerify,
+				RootCaPaths:        logoutParams.rootCaPaths,
+				RootCaDatas:        rootCaDatas,
+			}
+
+			logger.Debug("Start logout processing", "issuer", httpClientConfig.BaseURL)
+
+			httpClient, err := httpclient.New(httpClientConfig)
+			if err != nil {
+				return err
+			}
+
+			ctx := context.Background()
+			ctx = logr.NewContextWithSlogLogger(ctx, logger)
+
+			// Fetch OIDC configuration to get end_session_endpoint
+			endSessionEndpoint, err := getEndSessionEndpoint(ctx, httpClient, httpClientConfig.BaseURL)
+			if err != nil {
+				return err
+			}
+
+			if endSessionEndpoint == "" {
+				return fmt.Errorf("end_session_endpoint not found in OIDC configuration")
+			}
+
+			logger.Debug("Found end_session_endpoint", "endpoint", endSessionEndpoint)
+
+			// Open browser to end_session_endpoint
+			_, _ = fmt.Fprintf(os.Stderr, "Opening browser to logout endpoint: %s\n", endSessionEndpoint)
+
+			err = openBrowser(endSessionEndpoint, logoutParams.browser)
+			if err != nil {
+				logger.Debug("Failed to open browser automatically", "error", err)
+				_, _ = fmt.Fprintf(os.Stderr, "Failed to open browser automatically. Please visit: %s\n", endSessionEndpoint)
+			}
+			return nil
+		}()
 		if err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 
-		logger.Debug("Start logout processing", "issuer", httpClientConfig.BaseURL)
-
-		httpClient, err := httpclient.New(httpClientConfig)
-		if err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-
-		ctx := context.Background()
-		ctx = logr.NewContextWithSlogLogger(ctx, logger)
-
-		// Fetch OIDC configuration to get end_session_endpoint
-		endSessionEndpoint, err := getEndSessionEndpoint(ctx, httpClient, httpClientConfig.BaseURL)
-		if err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-
-		if endSessionEndpoint == "" {
-			_, _ = fmt.Fprintln(os.Stderr, "Error: end_session_endpoint not found in OIDC configuration")
-			os.Exit(1)
-		}
-
-		logger.Debug("Found end_session_endpoint", "endpoint", endSessionEndpoint)
-
-		// Open browser to end_session_endpoint
-		_, _ = fmt.Fprintf(os.Stderr, "Opening browser to logout endpoint: %s\n", endSessionEndpoint)
-
-		if err := openBrowser(endSessionEndpoint, logoutParams.browser); err != nil {
-			logger.Debug("Failed to open browser automatically", "error", err)
-			_, _ = fmt.Fprintf(os.Stderr, "Failed to open browser automatically. Please visit: %s\n", endSessionEndpoint)
-		}
 	},
-}
-
-// setupLogout sets up the logger and HTTP client configuration for logout command
-func setupLogout(cmd *cobra.Command) (*slog.Logger, *httpclient.Config, error) {
-	// Setup logging
-	logger, err := misc.NewLogger(&logoutParams.logConfig)
-	if err != nil {
-		return nil, nil, fmt.Errorf("could not create logger: %w", err)
-	}
-
-	// Handle environment variables
-	adjustStringParam(cmd.PersistentFlags(), "issuerURL", "KC_ISSUER_URL", &logoutParams.issuerURL)
-
-	if logoutParams.issuerURL == "" {
-		return logger, nil, fmt.Errorf("issuer URL cannot be empty")
-	}
-
-	// Setup HTTP client configuration
-	httpClientConfig := &httpclient.Config{
-		BaseURL:            logoutParams.issuerURL,
-		DumpExchanges:      logoutParams.dumpClientExchanges,
-		InsecureSkipVerify: logoutParams.insecureSkipVerify,
-		RootCaPaths:        logoutParams.rootCaPaths,
-	}
-
-	return logger, httpClientConfig, nil
 }
 
 // OIDCConfiguration represents the OIDC provider configuration
@@ -164,4 +196,47 @@ func getEndSessionEndpoint(ctx context.Context, httpClient *http.Client, issuerU
 		"endSessionEndpoint", config.EndSessionEndpoint)
 
 	return config.EndSessionEndpoint, nil
+}
+
+// NB: Most of errors should no occurs, as this function is called only when standalone mode has been detected
+func standaloneLogout(kubeconfig string, context string) error {
+	// ----------------------------------------------- Load the current kubeconfig
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	loadingRules.ExplicitPath = kubeconfig // From the command line. Must take precedence
+	loadingRules.WarnIfAllMissing = false
+	configOverrides := &clientcmd.ConfigOverrides{}
+	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
+	rawConfig, err := kubeConfig.RawConfig()
+	if err != nil {
+		return err
+	}
+	configAccess := kubeConfig.ConfigAccess()
+
+	contextName := rawConfig.CurrentContext
+	if context != "" {
+		contextName = context
+	}
+	currentContext := rawConfig.Contexts[contextName]
+	if currentContext == nil {
+		return fmt.Errorf("current context not found in kubeconfig")
+	}
+	authInfo := rawConfig.AuthInfos[currentContext.AuthInfo]
+	if authInfo == nil {
+		return fmt.Errorf("no authInfo for user %s found in kubeconfig", currentContext.AuthInfo)
+	}
+	authProvider := authInfo.AuthProvider
+	if authProvider == nil {
+		return fmt.Errorf("no authProvider for user %s found in kubeconfig", currentContext.AuthInfo)
+	}
+	if authProvider.Name != "oidc" {
+		return fmt.Errorf("authProvider %s for user %s is not 'oidc'", authProvider.Name, currentContext.AuthInfo)
+	}
+	config := authProvider.Config
+	if config == nil {
+		return fmt.Errorf("no config found for user %s in kubeconfig", currentContext.AuthInfo)
+	}
+	delete(config, "id-token")
+	delete(config, "refresh-token")
+
+	return clientcmd.ModifyConfig(configAccess, rawConfig, false)
 }
