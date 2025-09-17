@@ -129,6 +129,8 @@ var configCmd = &cobra.Command{
 			rawConfig, err := kubeConfig.RawConfig()
 			configAccess := kubeConfig.ConfigAccess()
 
+			// logger.Debug("ConfigAccess", "AuthInfos", rawConfig.AuthInfos["oidc-kubo6-user"])
+
 			// -----------------------------------------------------In case of init blank file
 			if rawConfig.Clusters == nil {
 				rawConfig.Clusters = make(map[string]*api.Cluster)
@@ -142,13 +144,13 @@ var configCmd = &cobra.Command{
 			// ---------------------------------------------------- Test previous config overwrite
 			_, exitingContext := rawConfig.Contexts[contextName]
 			if exitingContext && !configParams.force {
-				return fmt.Errorf("context %s already exists in this config file (%s)", contextName, configAccess.GetDefaultFilename())
+				return fmt.Errorf("context %s already exists in this config file (%s). Use --force to override\n", contextName, configAccess.GetDefaultFilename())
 			}
 			if _, ok := rawConfig.Clusters[clusterName]; ok && !configParams.force {
-				return fmt.Errorf("cluster '%s' already existing in this config file (%s)\n", clusterName, configAccess.GetDefaultFilename())
+				return fmt.Errorf("cluster '%s' already existing in this config file (%s). Use --force to override\n", clusterName, configAccess.GetDefaultFilename())
 			}
 			if _, ok := rawConfig.AuthInfos[userName]; ok && !configParams.force {
-				return fmt.Errorf("user '%s' already existing in this config file (%s)\n", userName, configAccess.GetDefaultFilename())
+				return fmt.Errorf("user '%s' already existing in this config file (%s). Use --force to override\n", userName, configAccess.GetDefaultFilename())
 			}
 
 			if exitingContext {
@@ -221,7 +223,7 @@ var configCmd = &cobra.Command{
 			return clientcmd.ModifyConfig(configAccess, rawConfig, false)
 		}()
 		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "%s\n", err.Error())
+			_, _ = fmt.Fprintf(os.Stderr, "ERROR: %s\n", err.Error())
 			os.Exit(1)
 		}
 
