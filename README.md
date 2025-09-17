@@ -37,7 +37,7 @@ Download the latest release from GitHub:
 
 ```bash
 # Download the latest release (replace with your OS/architecture)
-curl -L -o kc https://github.com/kubauth/kc/releases/download/0.1.0/kc-linux-amd64
+curl -L -o kc https://github.com/kubauth/kc/releases/download/0.1.1/kc-linux-amd64
 
 # Make it executable
 chmod +x kc
@@ -52,7 +52,7 @@ sudo mv kc /usr/local/bin/
 - `kc-darwin-arm64` - macOS Apple Silicon
 - `kc-windows-amd64.exe` - Windows 64-bit
 
-Visit [releases page](https://github.com/kubauth/kc/releases/tag/0.1.0) for all available downloads.
+Visit [releases page](https://github.com/kubauth/kc/releases/tag/0.1.1) for all available downloads.
 
 ### Building from Source
 

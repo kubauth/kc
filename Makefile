@@ -11,7 +11,7 @@
 #    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
-  
+
 APP_VERSION ?= 0.1.1-snapshot
 
 
@@ -61,7 +61,7 @@ build: ## Build kc binary with dependencies
 # git push origin tag X.X.X
 #
 # export GITHUB_TOKEN=
-# make cli-release
+# make release
 
 .PHONY: release
 release:		## Upload a release of kc cli client
