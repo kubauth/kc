@@ -33,6 +33,7 @@ var oidcParams struct {
 	onlyAccessToken  bool
 	kubeconfig       string
 	context          string
+	detailIDToken    bool
 }
 
 func initOidcParams(cmd *cobra.Command) {
@@ -51,6 +52,7 @@ func initOidcParams(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVarP(&oidcParams.clientSecret, "clientSecret", "s", "", "Client Secret (Env:KC_CLIENT_SECRET)")
 	cmd.PersistentFlags().BoolVar(&oidcParams.onlyIDToken, "onlyIDToken", false, "Output only ID token")
 	cmd.PersistentFlags().BoolVar(&oidcParams.onlyAccessToken, "onlyAccessToken", false, "Output only Access token")
+	cmd.PersistentFlags().BoolVarP(&oidcParams.detailIDToken, "detailIDToken", "d", false, "Detail ID token")
 
 }
 
@@ -95,7 +97,7 @@ func setupOidc(cmd *cobra.Command) (*slog.Logger, error) {
 }
 
 // outputTokens prints tokens according to the configured output mode
-func outputTokens(tokenResponse *TokenResponse) {
+func outputTokens(tokenResponse *TokenResponse, logger *slog.Logger) {
 	if oidcParams.onlyIDToken {
 		if tokenResponse.IDToken == "" {
 			_, _ = fmt.Fprintf(os.Stderr, "No ID token\n")
@@ -125,6 +127,13 @@ func outputTokens(tokenResponse *TokenResponse) {
 			fmt.Printf("ID token: null\n")
 		}
 		fmt.Printf("Expire in: %s\n", time.Duration(tokenResponse.ExpiresIn)*time.Second)
+		if tokenResponse.IDToken != "" && oidcParams.detailIDToken {
+			err := decodeAndDisplayJWT(tokenResponse.IDToken, true)
+			if err != nil {
+				logger.Warn("Failed to display detailed ID token")
+			}
+		}
+
 	}
 }
 

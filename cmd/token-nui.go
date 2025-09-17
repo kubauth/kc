@@ -86,7 +86,7 @@ var tokenNuiCmd = &cobra.Command{
 		}
 
 		// Output tokens using shared function
-		outputTokens(tokenResponse)
+		outputTokens(tokenResponse, logger)
 
 	},
 }

@@ -91,7 +91,7 @@ Examples:
 		logger.Debug("Decoding JWT token", "length", len(jwtToken))
 
 		// Decode and display JWT
-		err = decodeAndDisplayJWT(jwtToken)
+		err = decodeAndDisplayJWT(jwtToken, false)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Error decoding JWT: %v\n", err)
 			os.Exit(1)
@@ -101,7 +101,7 @@ Examples:
 }
 
 // decodeAndDisplayJWT decodes a JWT token and displays its header and payload in pretty JSON
-func decodeAndDisplayJWT(token string) error {
+func decodeAndDisplayJWT(token string, onlyPayload bool) error {
 	// Split JWT into parts (header.payload.signature)
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
@@ -121,9 +121,11 @@ func decodeAndDisplayJWT(token string) error {
 	}
 
 	// Display results
-	fmt.Println("JWT Header:")
-	fmt.Println(header)
-	fmt.Println()
+	if !onlyPayload {
+		fmt.Println("JWT Header:")
+		fmt.Println(header)
+		fmt.Println()
+	}
 	fmt.Println("JWT Payload:")
 	fmt.Println(payload)
 
