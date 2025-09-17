@@ -69,7 +69,7 @@ func getConfigInfo(kubeconfig string, contextName string, logger *slog.Logger) (
 			logger.Debug("Using OIDC Auth Provider")
 			configInfo.issuerURL = config["idp-issuer-url"]
 			configInfo.caData = config["idp-certificate-authority-data"]
-			configInfo.idToken = config["idp-token"]
+			configInfo.idToken = config["id-token"]
 			configInfo.refreshToken = config["refresh-token"]
 			configInfo.insecureSkipTlsVerify = false
 			configInfo.standalone = true

@@ -100,26 +100,33 @@ Examples:
 	},
 }
 
-// decodeAndDisplayJWT decodes a JWT token and displays its header and payload in pretty JSON
-func decodeAndDisplayJWT(token string, onlyPayload bool) error {
+func decodeJWT(token string) (header string, payload string, err error) {
 	// Split JWT into parts (header.payload.signature)
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		return fmt.Errorf("invalid JWT format: expected 3 parts separated by '.', got %d", len(parts))
+		return "", "", fmt.Errorf("invalid JWT format: expected 3 parts separated by '.', got %d", len(parts))
 	}
 
 	// Decode header
-	header, err := decodeJWTPart(parts[0])
+	header, err = decodeJWTPart(parts[0])
 	if err != nil {
-		return fmt.Errorf("failed to decode JWT header: %w", err)
+		return "", "", fmt.Errorf("failed to decode JWT header: %w", err)
 	}
 
 	// Decode payload
-	payload, err := decodeJWTPart(parts[1])
+	payload, err = decodeJWTPart(parts[1])
 	if err != nil {
-		return fmt.Errorf("failed to decode JWT payload: %w", err)
+		return header, "", fmt.Errorf("failed to decode JWT payload: %w", err)
 	}
+	return header, payload, nil
+}
 
+// decodeAndDisplayJWT decodes a JWT token and displays its header and payload in pretty JSON
+func decodeAndDisplayJWT(token string, onlyPayload bool) error {
+	header, payload, err := decodeJWT(token)
+	if err != nil {
+		return err
+	}
 	// Display results
 	if !onlyPayload {
 		fmt.Println("JWT Header:")
@@ -161,7 +168,6 @@ func decodeJWTPart(part string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("JSON formatting failed: %w", err)
 	}
-
 	return string(prettyJSON), nil
 }
 

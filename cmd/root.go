@@ -37,6 +37,7 @@ func init() {
 	rootCmd.AddCommand(logoutCmd)
 	rootCmd.AddCommand(hashCmd)
 	rootCmd.AddCommand(configCmd)
+	rootCmd.AddCommand(whoamiCmd)
 
 }
 
