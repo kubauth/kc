@@ -60,7 +60,7 @@ Or in your OidcClient 'hashedSecret' field
 
 Example:
   apiVersion: kubauth.kubotal.io/v1alpha1
-  kind: OiscSecret
+  kind: OidcClient
   .....
   spec:
     hashedSecret: "%s"
