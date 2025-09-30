@@ -22,7 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/go-logr/logr"
-	"github.com/kubauth/okit/pkg/proto"
+	"github.com/kubauth/kubauth-kit/pkg/proto"
 	"github.com/spf13/cobra"
 	"io"
 	"k8s.io/client-go/tools/clientcmd"
@@ -95,6 +95,7 @@ var configCmd = &cobra.Command{
 	Use:   "config <configuration_url>",
 	Short: "Initialize KUBECONFIG for OIDC connection",
 	Args:  cobra.ExactArgs(1),
+	Aliases: []string{"init"},
 	Run: func(cmd *cobra.Command, args []string) {
 		logger, err := misc.NewLogger(&configParams.logConfig)
 		if err != nil {

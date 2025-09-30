@@ -2,12 +2,12 @@ module kc
 
 go 1.24.6
 
-replace github.com/kubauth/okit => ../okit
+replace github.com/kubauth/kubauth-kit => ../kubauth-kit
 
 require (
 	github.com/coreos/go-oidc/v3 v3.15.0
 	github.com/go-logr/logr v1.4.3
-	github.com/kubauth/okit v0.1.0
+	github.com/kubauth/kubauth-kit v0.1.0
 	github.com/rs/cors v1.11.1
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/pflag v1.0.10
