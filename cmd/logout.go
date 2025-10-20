@@ -21,12 +21,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"k8s.io/client-go/tools/clientcmd"
 	"kc/internal/httpclient"
 	"kc/internal/misc"
 	"net/http"
 	"os"
 	"os/exec"
+
+	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/cobra"
@@ -41,6 +42,8 @@ var logoutParams struct {
 	rootCaPaths         []string
 	kubeconfig          string
 	context             string
+	sso                 bool
+	k8s                 bool
 }
 
 func init() {
@@ -54,6 +57,9 @@ func init() {
 	logoutCmd.PersistentFlags().StringVar(&logoutParams.kubeconfig, "kubeconfig", "", "kubeconfig file to fetch issuerURL and CA (default env:KUBECONFIG or $HOME/.kube/config)")
 	logoutCmd.PersistentFlags().StringVar(&logoutParams.context, "context", "", "Context in kubeconfig file to fetch issuerURL and CA (Override kubeconfig default context")
 
+	logoutCmd.PersistentFlags().BoolVarP(&logoutParams.sso, "sso", "s", false, "Logout from SSO (Will launch a browser)")
+	logoutCmd.PersistentFlags().BoolVarP(&logoutParams.k8s, "k8s", "k", false, "Logout from k8s (kubectl)")
+
 }
 
 var logoutCmd = &cobra.Command{
@@ -65,6 +71,11 @@ var logoutCmd = &cobra.Command{
 			logger, err := misc.NewLogger(&logoutParams.logConfig)
 			if err != nil {
 				return fmt.Errorf("could not create logger: %w", err)
+			}
+			if !logoutParams.sso && !logoutParams.k8s {
+				// None means all
+				logoutParams.sso = true
+				logoutParams.k8s = true
 			}
 
 			// Handle environment variables
@@ -86,63 +97,70 @@ var logoutCmd = &cobra.Command{
 				if !logoutParams.insecureSkipVerify {
 					logoutParams.insecureSkipVerify = configInfo.insecureSkipTlsVerify
 				}
-				if configInfo.standalone {
-					fmt.Printf("Cleaning oidc auth provider token in kubeconfig if any\n")
-					err = standaloneLogout(logoutParams.kubeconfig, logoutParams.context)
-					if err != nil {
-						logger.Error("Error on standalone mode logout", "error", err)
-					}
-				} else {
-					fmt.Printf("CLeaning kubelogin OIDC configuration if any\n")
-					err := exec.Command("kubectl", "oidc-login", "clean").Start()
-					if err != nil {
-						logger.Error("Could not clean kubelogin OIDC configuration", "error", err)
+				if logoutParams.k8s {
+					if configInfo.standalone {
+						fmt.Printf("Cleaning oidc auth provider token in kubeconfig if any\n")
+						err = standaloneLogout(logoutParams.kubeconfig, logoutParams.context)
+						if err != nil {
+							logger.Error("Error on standalone mode logout", "error", err)
+						}
+					} else {
+						fmt.Printf("CLeaning kubelogin OIDC configuration if any\n")
+						err := exec.Command("kubectl", "oidc-login", "clean").Start()
+						if err != nil {
+							logger.Error("Could not clean kubelogin OIDC configuration", "error", err)
+						}
 					}
 				}
+			} else {
+				if logoutParams.k8s {
+					fmt.Printf("No OIDC configuration found in kubeconfig\n")
+				}
 			}
+			if logoutParams.sso {
+				if logoutParams.issuerURL == "" {
+					return fmt.Errorf("issuer URL cannot be empty")
+				}
 
-			if logoutParams.issuerURL == "" {
-				return fmt.Errorf("issuer URL cannot be empty")
-			}
+				// Setup HTTP client configuration
+				httpClientConfig := &httpclient.Config{
+					BaseURL:            logoutParams.issuerURL,
+					DumpExchanges:      logoutParams.dumpClientExchanges,
+					InsecureSkipVerify: logoutParams.insecureSkipVerify,
+					RootCaPaths:        logoutParams.rootCaPaths,
+					RootCaDatas:        rootCaDatas,
+				}
 
-			// Setup HTTP client configuration
-			httpClientConfig := &httpclient.Config{
-				BaseURL:            logoutParams.issuerURL,
-				DumpExchanges:      logoutParams.dumpClientExchanges,
-				InsecureSkipVerify: logoutParams.insecureSkipVerify,
-				RootCaPaths:        logoutParams.rootCaPaths,
-				RootCaDatas:        rootCaDatas,
-			}
+				logger.Debug("Start logout processing", "issuer", httpClientConfig.BaseURL)
 
-			logger.Debug("Start logout processing", "issuer", httpClientConfig.BaseURL)
+				httpClient, err := httpclient.New(httpClientConfig)
+				if err != nil {
+					return err
+				}
 
-			httpClient, err := httpclient.New(httpClientConfig)
-			if err != nil {
-				return err
-			}
+				ctx := context.Background()
+				ctx = logr.NewContextWithSlogLogger(ctx, logger)
 
-			ctx := context.Background()
-			ctx = logr.NewContextWithSlogLogger(ctx, logger)
+				// Fetch OIDC configuration to get end_session_endpoint
+				endSessionEndpoint, err := getEndSessionEndpoint(ctx, httpClient, httpClientConfig.BaseURL)
+				if err != nil {
+					return err
+				}
 
-			// Fetch OIDC configuration to get end_session_endpoint
-			endSessionEndpoint, err := getEndSessionEndpoint(ctx, httpClient, httpClientConfig.BaseURL)
-			if err != nil {
-				return err
-			}
+				if endSessionEndpoint == "" {
+					return fmt.Errorf("end_session_endpoint not found in OIDC configuration")
+				}
 
-			if endSessionEndpoint == "" {
-				return fmt.Errorf("end_session_endpoint not found in OIDC configuration")
-			}
+				logger.Debug("Found end_session_endpoint", "endpoint", endSessionEndpoint)
 
-			logger.Debug("Found end_session_endpoint", "endpoint", endSessionEndpoint)
+				// Open browser to end_session_endpoint
+				_, _ = fmt.Fprintf(os.Stderr, "Opening browser to logout endpoint: %s\n", endSessionEndpoint)
 
-			// Open browser to end_session_endpoint
-			_, _ = fmt.Fprintf(os.Stderr, "Opening browser to logout endpoint: %s\n", endSessionEndpoint)
-
-			err = openBrowser(endSessionEndpoint, logoutParams.browser)
-			if err != nil {
-				logger.Debug("Failed to open browser automatically", "error", err)
-				_, _ = fmt.Fprintf(os.Stderr, "Failed to open browser automatically. Please visit: %s\n", endSessionEndpoint)
+				err = openBrowser(endSessionEndpoint, logoutParams.browser)
+				if err != nil {
+					logger.Debug("Failed to open browser automatically", "error", err)
+					_, _ = fmt.Fprintf(os.Stderr, "Failed to open browser automatically. Please visit: %s\n", endSessionEndpoint)
+				}
 			}
 			return nil
 		}()
@@ -150,7 +168,6 @@ var logoutCmd = &cobra.Command{
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-
 	},
 }
 
