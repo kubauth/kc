@@ -18,10 +18,11 @@ package cmd
 
 import (
 	"fmt"
-	"k8s.io/client-go/tools/clientcmd"
 	"log/slog"
 	"os"
 	"strings"
+
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 type configInfo struct {
