@@ -21,18 +21,19 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/go-logr/logr"
-	"github.com/kubauth/kubauth-kit/pkg/proto"
-	"github.com/spf13/cobra"
 	"io"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/tools/clientcmd/api"
 	"kc/internal/httpclient"
 	"kc/internal/misc"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/go-logr/logr"
+	"github.com/kubauth/kubauth-kubeconfig/pkg/proto"
+	"github.com/spf13/cobra"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/clientcmd/api"
 )
 
 var configParams struct {
@@ -92,9 +93,9 @@ var validPKCETypes = map[string]bool{
 }
 
 var configCmd = &cobra.Command{
-	Use:   "config <configuration_url>",
-	Short: "Initialize KUBECONFIG for OIDC connection",
-	Args:  cobra.ExactArgs(1),
+	Use:     "config <configuration_url>",
+	Short:   "Initialize KUBECONFIG for OIDC connection",
+	Args:    cobra.ExactArgs(1),
 	Aliases: []string{"init"},
 	Run: func(cmd *cobra.Command, args []string) {
 		logger, err := misc.NewLogger(&configParams.logConfig)

@@ -38,6 +38,7 @@ func init() {
 	rootCmd.AddCommand(hashCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(whoamiCmd)
+	rootCmd.AddCommand(auditCmd)
 
 }
 
