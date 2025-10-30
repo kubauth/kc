@@ -65,7 +65,7 @@ var auditDetailCmd = &cobra.Command{
 			tw := new(tabwriter.Writer)
 			tw.Init(os.Stdout, 2, 4, 3, ' ', 0)
 			twb := misc.NewTabWriterBuffer(tw)
-			addLine(twb, lastAttempt)
+			addLine(twb, lastAttempt, false)
 			_ = tw.Flush()
 			fmt.Printf("Detail:\n")
 			tw = new(tabwriter.Writer)
@@ -76,7 +76,7 @@ var auditDetailCmd = &cobra.Command{
 				if err != nil {
 					claims = []byte("!!! Unable to decode !!!")
 				}
-				uid := "UNSET"
+				uid := "-"
 				if detail.User.Uid != nil {
 					uid = strconv.Itoa(*detail.User.Uid)
 				}

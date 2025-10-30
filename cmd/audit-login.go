@@ -23,6 +23,7 @@ import (
 	"kc/internal/k8sapi"
 	"kc/internal/misc"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -31,6 +32,15 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+var auditLoginParams struct {
+	byLogin bool
+}
+
+func init() {
+	auditLoginCmd.PersistentFlags().BoolVarP(&auditLoginParams.byLogin, "byLogin", "l", false, "Sort ny login")
+
+}
 
 var auditLoginCmd = &cobra.Command{
 	Use:   "logins",
@@ -59,12 +69,19 @@ var auditLoginCmd = &cobra.Command{
 				fmt.Println("No loginAttempts found")
 				return nil
 			}
+			if !auditLoginParams.byLogin {
+				// Sort by time
+				sort.Slice(list.Items, func(i, j int) bool {
+					return list.Items[i].Spec.When.Time.Unix() < list.Items[j].Spec.When.Time.Unix()
+				})
+			} // else sort by login is natural order, due to loginAttempt name
+
 			tw := new(tabwriter.Writer)
 			tw.Init(os.Stdout, 2, 4, 3, ' ', 0)
 			twb := misc.NewTabWriterBuffer(tw)
 			for _, attempt := range list.Items {
 				if len(args) == 0 || attempt.Spec.User.Login == args[0] {
-					addLine(twb, attempt)
+					addLine(twb, attempt, auditLoginParams.byLogin)
 				}
 			}
 			_ = tw.Flush()
@@ -77,17 +94,22 @@ var auditLoginCmd = &cobra.Command{
 	},
 }
 
-func addLine(twb misc.TabWriterBuffer, attempt kubauthv1alpha1.LoginAttempt) {
+func addLine(twb misc.TabWriterBuffer, attempt kubauthv1alpha1.LoginAttempt, loginFirst bool) {
 	claims, err := json.Marshal(attempt.Spec.User.Claims)
 	if err != nil {
 		claims = []byte("!!! Unable to decode !!!")
 	}
-	uid := "UNSET"
+	uid := "-"
 	if attempt.Spec.User.Uid != nil {
 		uid = strconv.Itoa(*attempt.Spec.User.Uid)
 	}
-	twb.Add("WHEN", "%s", attempt.Spec.When.Format("Mon 15:04:05"))
-	twb.Add("LOGIN", "%s", attempt.Spec.User.Login)
+	if loginFirst {
+		twb.Add("LOGIN", "%s", attempt.Spec.User.Login)
+		twb.Add("WHEN", "%s", attempt.Spec.When.Format("Mon 15:04:05"))
+	} else {
+		twb.Add("WHEN", "%s", attempt.Spec.When.Format("Mon 15:04:05"))
+		twb.Add("LOGIN", "%s", attempt.Spec.User.Login)
+	}
 	twb.Add("STATUS", "%s", attempt.Spec.Status)
 	twb.Add("UID", "%s", uid)
 	twb.Add("NAME", "%s", attempt.Spec.User.Name)
