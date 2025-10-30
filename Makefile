@@ -12,7 +12,7 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-APP_VERSION ?= 0.1.1-snapshot
+APP_VERSION ?= 0.1.2-snapshot
 
 
 BUILD_TS ?= $(shell date -u +%Y%m%d.%H%M%S)

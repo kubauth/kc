@@ -113,7 +113,7 @@ func (hs *httpServer) Start(ctx context.Context) error {
 		}
 	}
 
-	logger.Info("Listening", "bindAddr", hs.config.BindAddr, "port", hs.config.BindPort, "tls", hs.config.Tls, "name", hs.name)
+	logger.Debug("Listening", "bindAddr", hs.config.BindAddr, "port", hs.config.BindPort, "tls", hs.config.Tls, "name", hs.name)
 
 	srv := &http.Server{
 		Handler:      hs.router,
@@ -126,7 +126,7 @@ func (hs *httpServer) Start(ctx context.Context) error {
 	idleConsClosed := make(chan struct{})
 	go func() {
 		<-ctx.Done()
-		logger.Info("shutting down server")
+		logger.Debug("shutting down server")
 
 		// TODO: use a context with reasonable timeout
 		if err := srv.Shutdown(context.Background()); err != nil {
@@ -140,7 +140,7 @@ func (hs *httpServer) Start(ctx context.Context) error {
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("httpServer %s: Error on srv.Serve(): %w", hs.name, err)
 	}
-	logger.Info("httpServer shutdown", "name", hs.name)
+	logger.Debug("httpServer shutdown", "name", hs.name)
 	<-idleConsClosed
 	return nil
 
