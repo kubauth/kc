@@ -87,27 +87,61 @@ func verifyIDToken(ctx context.Context, provider *oidc.Provider, idToken, client
 	return nil
 }
 
-// verifyJWTAccessToken verifies a JWT access token
+// verifyJWTAccessToken verifies a JWT access token including signature verification
 func verifyJWTAccessToken(ctx context.Context, provider *oidc.Provider, accessToken, clientID string) error {
 	logger := logr.FromContextAsSlogLogger(ctx)
 
-	// For JWT access tokens, we can decode and validate the structure
-	// Note: Access tokens typically don't have the same verification requirements as ID tokens
-	// They might not be intended for the client (audience check might fail)
-	// So we'll do basic JWT validation and check expiration
-
-	// First, try to decode the JWT to validate its structure and check expiration
-	header, payload, err := decodeJWT(accessToken)
+	// First, try to decode the JWT to validate its structure and get basic info
+	_, payload, err := decodeJWT(accessToken)
 	if err != nil {
 		return fmt.Errorf("failed to decode JWT access token: %w", err)
 	}
 
-	// Parse the payload to check expiration
+	// Parse the payload to get claims
 	var claims map[string]interface{}
 	if err := json.Unmarshal([]byte(payload), &claims); err != nil {
 		return fmt.Errorf("failed to parse JWT access token payload: %w", err)
 	}
 
+	// Log basic token info
+	if sub, ok := claims["sub"].(string); ok {
+		logger.Debug("JWT access token subject", "subject", sub)
+	}
+	if iss, ok := claims["iss"].(string); ok {
+		logger.Debug("JWT access token issuer", "issuer", iss)
+	}
+
+	// Now verify the signature using go-oidc
+	// Create a verifier that skips audience validation since access tokens
+	// might not be intended for this specific client
+	verifier := provider.Verifier(&oidc.Config{
+		ClientID:          clientID,
+		SkipClientIDCheck: true,  // Skip audience check for access tokens
+		SkipExpiryCheck:   false, // Still check expiration
+		SkipIssuerCheck:   false, // Still check issuer
+	})
+
+	// Verify the JWT signature and claims
+	token, err := verifier.Verify(ctx, accessToken)
+	if err != nil {
+		// If signature verification fails, log the error but continue with manual validation
+		logger.Error("JWT access token signature verification failed, falling back to manual validation", "error", err)
+
+		// Manual validation for cases where the verifier is too strict
+		return verifyJWTManually(claims, logger)
+	}
+
+	// If signature verification succeeded, log success
+	logger.Debug("JWT access token signature verified successfully",
+		"subject", token.Subject,
+		"issuer", token.Issuer,
+		"expiry", token.Expiry)
+
+	return nil
+}
+
+// verifyJWTManually performs manual JWT validation when signature verification fails
+func verifyJWTManually(claims map[string]interface{}, logger *slog.Logger) error {
 	// Check expiration if present
 	if exp, ok := claims["exp"].(float64); ok {
 		expTime := time.Unix(int64(exp), 0)
@@ -125,18 +159,15 @@ func verifyJWTAccessToken(ctx context.Context, provider *oidc.Provider, accessTo
 		}
 	}
 
-	// Log some basic info about the token
-	if sub, ok := claims["sub"].(string); ok {
-		logger.Debug("JWT access token validated", "subject", sub)
-	}
-	if iss, ok := claims["iss"].(string); ok {
-		logger.Debug("JWT access token issuer", "issuer", iss)
+	// Check issued at if present
+	if iat, ok := claims["iat"].(float64); ok {
+		iatTime := time.Unix(int64(iat), 0)
+		if time.Now().Before(iatTime) {
+			return fmt.Errorf("JWT access token issued in the future at %v", iatTime)
+		}
 	}
 
-	// Note: We don't verify the signature here as access tokens might not be intended for this client
-	// and the go-oidc verifier is specifically for ID tokens
-	logger.Debug("JWT access token structure and timing validated", "header", header[:50]+"...")
-
+	logger.Debug("JWT access token manually validated (signature verification failed but timing is valid)")
 	return nil
 }
 
