@@ -100,6 +100,13 @@ var tokenNuiCmd = &cobra.Command{
 				logger.Debug("ID token verified successfully")
 			}
 		}
+		if tokenResponse.AccessToken != "" {
+			if isJWT(tokenResponse.AccessToken) {
+				// Verify a jwt access toke
+			} else {
+				// Verify an opaque access token
+			}
+		}
 
 		// Output tokens using shared function
 		outputTokens(tokenResponse, logger)
@@ -202,24 +209,4 @@ func passwordCredentialsFlow(ctx context.Context, httpClient *http.Client, token
 	logger.Debug("Token response received", "hasAccessToken", tokenResponse.AccessToken != "", "hasIDToken", tokenResponse.IDToken != "")
 
 	return &tokenResponse, nil
-}
-
-// verifyIDToken verifies the ID token using go-oidc verifier
-func verifyIDToken(ctx context.Context, provider *oidc.Provider, idToken, clientID string) error {
-	logger := logr.FromContextAsSlogLogger(ctx)
-
-	// Create ID token verifier
-	verifier := provider.Verifier(&oidc.Config{
-		ClientID: clientID,
-	})
-
-	// Verify the ID token
-	token, err := verifier.Verify(ctx, idToken)
-	if err != nil {
-		return fmt.Errorf("ID token verification failed: %w", err)
-	}
-
-	logger.Debug("ID token verified", "subject", token.Subject, "issuer", token.Issuer, "audience", token.Audience)
-
-	return nil
 }

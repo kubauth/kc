@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -40,16 +41,17 @@ type TokenResponse struct {
 }
 
 var oidcParams struct {
-	logConfig        misc.LogConfig
-	httpClientConfig httpclient.Config
-	scopes           []string
-	clientId         string
-	clientSecret     string
-	onlyIDToken      bool
-	onlyAccessToken  bool
-	kubeconfig       string
-	context          string
-	detailIDToken    bool
+	logConfig         misc.LogConfig
+	httpClientConfig  httpclient.Config
+	scopes            []string
+	clientId          string
+	clientSecret      string
+	onlyIdToken       bool
+	onlyAccessToken   bool
+	kubeconfig        string
+	context           string
+	detailIdToken     bool
+	detailAccessToken bool
 }
 
 func initOidcParams(cmd *cobra.Command) {
@@ -66,9 +68,10 @@ func initOidcParams(cmd *cobra.Command) {
 
 	cmd.PersistentFlags().StringVarP(&oidcParams.clientId, "clientId", "c", "", "Client ID (Env:KC_CLIENT_ID)")
 	cmd.PersistentFlags().StringVarP(&oidcParams.clientSecret, "clientSecret", "s", "", "Client Secret (Env:KC_CLIENT_SECRET)")
-	cmd.PersistentFlags().BoolVar(&oidcParams.onlyIDToken, "onlyIDToken", false, "Output only ID token")
+	cmd.PersistentFlags().BoolVar(&oidcParams.onlyIdToken, "onlyIdToken", false, "Output only ID token")
 	cmd.PersistentFlags().BoolVar(&oidcParams.onlyAccessToken, "onlyAccessToken", false, "Output only Access token")
-	cmd.PersistentFlags().BoolVarP(&oidcParams.detailIDToken, "detailIDToken", "d", false, "Detail ID token")
+	cmd.PersistentFlags().BoolVarP(&oidcParams.detailIdToken, "detailIdToken", "d", false, "Detail ID token")
+	cmd.PersistentFlags().BoolVarP(&oidcParams.detailAccessToken, "detailAccessToken", "a", false, "Detail Access token")
 
 }
 
@@ -114,7 +117,7 @@ func setupOidc(cmd *cobra.Command) (*slog.Logger, error) {
 
 // outputTokens prints tokens according to the configured output mode
 func outputTokens(tokenResponse *TokenResponse, logger *slog.Logger) {
-	if oidcParams.onlyIDToken {
+	if oidcParams.onlyIdToken {
 		if tokenResponse.IDToken == "" {
 			_, _ = fmt.Fprintf(os.Stderr, "No ID token\n")
 		} else {
@@ -143,14 +146,51 @@ func outputTokens(tokenResponse *TokenResponse, logger *slog.Logger) {
 			fmt.Printf("ID token: null\n")
 		}
 		fmt.Printf("Expire in: %s\n", time.Duration(tokenResponse.ExpiresIn)*time.Second)
-		if tokenResponse.IDToken != "" && oidcParams.detailIDToken {
-			err := decodeAndDisplayJWT(tokenResponse.IDToken, true)
+		if tokenResponse.IDToken != "" && oidcParams.detailIdToken {
+			err := decodeAndDisplayJWT("IdToken", tokenResponse.IDToken, true)
 			if err != nil {
 				logger.Warn("Failed to display detailed ID token")
 			}
 		}
-
+		if tokenResponse.AccessToken != "" && oidcParams.detailAccessToken {
+			if isJWT(tokenResponse.AccessToken) {
+				err := decodeAndDisplayJWT("AccessToken", tokenResponse.AccessToken, true)
+				if err != nil {
+					logger.Warn("Failed to display detailed Access token")
+				}
+			} else {
+				fmt.Printf("Server is configured to generate opaque access token\n")
+			}
+		}
 	}
+}
+
+// As the server may issue AccessToken as JWT or as opaque form, depending of its configuration, we need a clean test to find the token type.
+func isJWT(token string) bool {
+	// JWT tokens have exactly 3 parts separated by dots
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	
+	// Each part should be non-empty and contain valid base64url characters
+	for _, part := range parts {
+		if len(part) == 0 {
+			return false
+		}
+		// Check if the part contains only valid base64url characters
+		// Base64url uses: A-Z, a-z, 0-9, -, _
+		for _, char := range part {
+			if !((char >= 'A' && char <= 'Z') || 
+				 (char >= 'a' && char <= 'z') || 
+				 (char >= '0' && char <= '9') || 
+				 char == '-' || char == '_') {
+				return false
+			}
+		}
+	}
+	
+	return true
 }
 
 // openBrowser attempts to open a browser with the given URL and browser preference

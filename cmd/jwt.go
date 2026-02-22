@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -27,6 +28,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/go-logr/logr"
 	"github.com/spf13/cobra"
 )
 
@@ -91,7 +94,7 @@ Examples:
 		logger.Debug("Decoding JWT token", "length", len(jwtToken))
 
 		// Decode and display JWT
-		err = decodeAndDisplayJWT(jwtToken, false)
+		err = decodeAndDisplayJWT("Token", jwtToken, false)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Error decoding JWT: %v\n", err)
 			os.Exit(1)
@@ -122,18 +125,18 @@ func decodeJWT(token string) (header string, payload string, err error) {
 }
 
 // decodeAndDisplayJWT decodes a JWT token and displays its header and payload in pretty JSON
-func decodeAndDisplayJWT(token string, onlyPayload bool) error {
+func decodeAndDisplayJWT(name string, token string, onlyPayload bool) error {
 	header, payload, err := decodeJWT(token)
 	if err != nil {
 		return err
 	}
 	// Display results
 	if !onlyPayload {
-		fmt.Println("JWT Header:")
+		fmt.Printf("%s: JWT Header:\n", name)
 		fmt.Println(header)
 		fmt.Println()
 	}
-	fmt.Println("JWT Payload:")
+	fmt.Printf("%s: JWT Payload:\n", name)
 	fmt.Println(payload)
 
 	return nil
@@ -208,4 +211,24 @@ func enhanceWithTimestamps(data interface{}) interface{} {
 	default:
 		return v
 	}
+}
+
+// verifyIDToken verifies the ID token using go-oidc verifier
+func verifyIDToken(ctx context.Context, provider *oidc.Provider, idToken, clientID string) error {
+	logger := logr.FromContextAsSlogLogger(ctx)
+
+	// Create ID token verifier
+	verifier := provider.Verifier(&oidc.Config{
+		ClientID: clientID,
+	})
+
+	// Verify the ID token
+	token, err := verifier.Verify(ctx, idToken)
+	if err != nil {
+		return fmt.Errorf("ID token verification failed: %w", err)
+	}
+
+	logger.Debug("ID token verified", "subject", token.Subject, "issuer", token.Issuer, "audience", token.Audience)
+
+	return nil
 }
