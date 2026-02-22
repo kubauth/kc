@@ -96,16 +96,7 @@ var tokenCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		// Verify ID token if present
-		if tokenResponse.IDToken != "" {
-			err = verifyIDToken(ctx, provider, tokenResponse.IDToken, oidcParams.clientId)
-			if err != nil {
-				logger.Debug("ID token verification failed", "error", err)
-				_, _ = fmt.Fprintf(os.Stderr, "Warning: ID token verification failed: %v\n", err)
-			} else {
-				logger.Debug("ID token verified successfully")
-			}
-		}
+		verifyTokens(ctx, provider, tokenResponse, httpClient, logger)
 
 		// Output tokens based on requested format
 		outputTokens(tokenResponse, logger)

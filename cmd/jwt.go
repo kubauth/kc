@@ -18,7 +18,6 @@ package cmd
 
 import (
 	"bufio"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -28,8 +27,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/go-logr/logr"
 	"github.com/spf13/cobra"
 )
 
@@ -211,24 +208,4 @@ func enhanceWithTimestamps(data interface{}) interface{} {
 	default:
 		return v
 	}
-}
-
-// verifyIDToken verifies the ID token using go-oidc verifier
-func verifyIDToken(ctx context.Context, provider *oidc.Provider, idToken, clientID string) error {
-	logger := logr.FromContextAsSlogLogger(ctx)
-
-	// Create ID token verifier
-	verifier := provider.Verifier(&oidc.Config{
-		ClientID: clientID,
-	})
-
-	// Verify the ID token
-	token, err := verifier.Verify(ctx, idToken)
-	if err != nil {
-		return fmt.Errorf("ID token verification failed: %w", err)
-	}
-
-	logger.Debug("ID token verified", "subject", token.Subject, "issuer", token.Issuer, "audience", token.Audience)
-
-	return nil
 }
