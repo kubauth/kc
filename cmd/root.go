@@ -1,5 +1,5 @@
 /*
-Copyright 2025 Kubotal
+Copyright 2026 Kubotal
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ func init() {
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(whoamiCmd)
 	rootCmd.AddCommand(auditCmd)
+	rootCmd.AddCommand(clientCmd)
 
 }
 

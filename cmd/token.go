@@ -131,6 +131,8 @@ func performAuthorizationCodeFlow(ctx context.Context, provider *oidc.Provider, 
 	// Build redirect URI
 	redirectURI := fmt.Sprintf("http://%s:%d/callback", tokenParams.httpSrvConfig.BindAddr, tokenParams.httpSrvConfig.BindPort)
 
+	logger.Debug("Setting redirect URI", "redirectURI", redirectURI)
+
 	// Configure OAuth2
 	oauth2Config := oauth2.Config{
 		ClientID:     oidcParams.clientId,

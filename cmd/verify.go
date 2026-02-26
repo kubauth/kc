@@ -202,6 +202,7 @@ func verifyOpaqueAccessToken(ctx context.Context, httpClient *http.Client, provi
 		data.Set("client_id", clientID)
 		logger.Debug("Using client_id in form data for introspection (public client)")
 	}
+	data.Set("client_id", clientID)
 
 	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, "POST", introspectionURL, strings.NewReader(data.Encode()))
