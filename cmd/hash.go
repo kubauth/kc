@@ -25,15 +25,32 @@ import (
 
 const DefaultBCryptWorkFactor = 12
 
-var hashCmd = &cobra.Command{
-	Use:   "hash [secret]",
-	Short: "Generate a BCrypt hash for OIDC client secret",
-	Long: `Generate a BCrypt hash for Kubauth User password and OIDC client secret.
+var hashParams struct {
+	raw  bool
+	user bool
+}
+
+func init() {
+	hashCmd.PersistentFlags().BoolVarP(&hashParams.raw, "raw", "r", false, "Just print the raw hash, without ending new line (to ease kc hash <value> -r | base64)")
+	hashCmd.PersistentFlags().BoolVarP(&hashParams.user, "user", "u", false, "Print for kubauth user")
+}
+
+var userFormat = `
+Use this hash in your User 'passwordHash' field
 
 Example:
-  kubauth hash my-secret
-`,
-	Args: cobra.ExactArgs(1),
+  apiVersion: kubauth.kubotal.io/v1alpha1
+  kind: User
+  .....
+  spec:
+    passwordHash: "%s"
+`
+
+var hashCmd = &cobra.Command{
+	Use:   "hash [secret]",
+	Short: "Generate a BCrypt hash for User password",
+	Args:  cobra.ExactArgs(1),
+
 	Run: func(cmd *cobra.Command, args []string) {
 		secret := args[0]
 
@@ -43,29 +60,12 @@ Example:
 			fmt.Printf("Error generating hash: %v\n", err)
 			return
 		}
-
-		fmt.Printf("Secret: %s\n", secret)
-		fmt.Printf("Hash: %s\n", string(hash))
-		fmt.Printf(`
-Use this hash in your User 'passwordHash' field
-
-Example:
-  apiVersion: kubauth.kubotal.io/v1alpha1
-  kind: User
-  .....
-  spec:
-    passwordHash: "%s"
-
-Or in your OidcClient 'hashedSecret' field
-
-Example:
-  apiVersion: kubauth.kubotal.io/v1alpha1
-  kind: OidcClient
-  .....
-  spec:
-    hashedSecret: "%s"
-
-
-`, string(hash), string(hash))
+		if hashParams.raw {
+			fmt.Print(string(hash))
+		} else if hashParams.user {
+			fmt.Printf(userFormat, string(hash))
+		} else {
+			fmt.Printf("Hash: %s\n", string(hash))
+		}
 	},
 }
