@@ -2,14 +2,14 @@ module kc
 
 go 1.24.6
 
-replace github.com/kubauth/kubauth-kubeconfig => ../kubauth-kit
+replace github.com/kubauth/kubauth-kubeconfig => ../kubauth-kubeconfig
 
 replace github.com/kubauth/kubauth => ../kubauth
 
 require (
 	github.com/coreos/go-oidc/v3 v3.15.0
 	github.com/go-logr/logr v1.4.3
-	github.com/kubauth/kubauth v0.1.2
+	github.com/kubauth/kubauth v0.2.0
 	github.com/kubauth/kubauth-kubeconfig v0.1.0
 	github.com/rs/cors v1.11.1
 	github.com/spf13/cobra v1.10.1
