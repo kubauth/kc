@@ -101,7 +101,7 @@ var tokenCmd = &cobra.Command{
 		// Output tokens based on requested format
 		outputTokens(tokenResponse, logger)
 		// Give some time to server
-		time.Sleep(time.Millisecond * 500)
+		time.Sleep(time.Millisecond * 2000)
 	},
 }
 
