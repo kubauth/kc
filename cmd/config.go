@@ -200,7 +200,7 @@ var configCmd = &cobra.Command{
 			}
 			if configParams.standalone {
 				scopes := configParams.scopes
-				scopes = addScope(scopes, "offline") // NB: openid is added by kubelogin
+				scopes = addScope(scopes, "offline_access") // NB: openid is added by kubelogin
 				rawConfig.AuthInfos[userName] = &api.AuthInfo{
 					AuthProvider: &api.AuthProviderConfig{
 						Name: "oidc",
@@ -215,7 +215,7 @@ var configCmd = &cobra.Command{
 				}
 			} else {
 				scopes := configParams.scopes
-				scopes = addScope(scopes, "offline") // NB: openid is added by kubelogin
+				scopes = addScope(scopes, "offline_access") // NB: openid is added by kubelogin
 				rawConfig.AuthInfos[userName] = &api.AuthInfo{
 					Exec: &api.ExecConfig{
 						APIVersion:      "client.authentication.k8s.io/v1",

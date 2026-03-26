@@ -61,7 +61,7 @@ func initOidcParams(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolVar(&oidcParams.httpClientConfig.DumpExchanges, "dumpClientExchanges", false, "Dump http client req/resp")
 	cmd.PersistentFlags().BoolVar(&oidcParams.httpClientConfig.InsecureSkipVerify, "insecureSkipVerify", false, "Don't validate issuer certificate")
 	cmd.PersistentFlags().StringArrayVar(&oidcParams.httpClientConfig.RootCaPaths, "caFile", []string{}, "Root CA path(s) for validation of issuer URL.")
-	cmd.PersistentFlags().StringArrayVar(&oidcParams.scopes, "scope", []string{"openid", "profile", "offline", "groups"}, "Requested scopes.")
+	cmd.PersistentFlags().StringArrayVar(&oidcParams.scopes, "scope", []string{"openid", "profile", "offline_access", "groups"}, "Requested scopes.")
 	cmd.PersistentFlags().StringVarP(&oidcParams.httpClientConfig.BaseURL, "issuerURL", "i", "", "issuer URL (Env:KC_ISSUER_URL)")
 	cmd.PersistentFlags().StringVar(&oidcParams.kubeconfig, "kubeconfig", "", "kubeconfig file to fetch issuerURL and CA (default env:KUBECONFIG or $HOME/.kube/config)")
 	cmd.PersistentFlags().StringVar(&oidcParams.context, "context", "", "Context in kubeconfig file to fetch issuerURL and CA (Override kubeconfig default context")
@@ -172,7 +172,7 @@ func isJWT(token string) bool {
 	if len(parts) != 3 {
 		return false
 	}
-	
+
 	// Each part should be non-empty and contain valid base64url characters
 	for _, part := range parts {
 		if len(part) == 0 {
@@ -181,15 +181,15 @@ func isJWT(token string) bool {
 		// Check if the part contains only valid base64url characters
 		// Base64url uses: A-Z, a-z, 0-9, -, _
 		for _, char := range part {
-			if !((char >= 'A' && char <= 'Z') || 
-				 (char >= 'a' && char <= 'z') || 
-				 (char >= '0' && char <= '9') || 
-				 char == '-' || char == '_') {
+			if !((char >= 'A' && char <= 'Z') ||
+				(char >= 'a' && char <= 'z') ||
+				(char >= '0' && char <= '9') ||
+				char == '-' || char == '_') {
 				return false
 			}
 		}
 	}
-	
+
 	return true
 }
 
