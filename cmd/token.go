@@ -54,6 +54,9 @@ func init() {
 	tokenCmd.PersistentFlags().IntVarP(&tokenParams.httpSrvConfig.BindPort, "bindPort", "p", 9921, "Local server Bind port")
 	tokenCmd.PersistentFlags().BoolVar(&tokenParams.usePKCE, "pkce", false, "Use PKCE (Proof Key for Code Exchange) for enhanced security")
 	tokenCmd.PersistentFlags().StringVar(&tokenParams.browser, "browser", "", "Browser to use (default: system default, options: chrome, firefox, safari)")
+	tokenCmd.PersistentFlags().DurationVarP(&oidcParams.ttl, "ttl", "t", time.Duration(0), "Time to live (default: 0)")
+	tokenCmd.PersistentFlags().IntVar(&oidcParams.renewAt, "renewAt", 60, "Percentage of the ticket duration to Trigger renewal ")
+
 }
 
 var tokenCmd = &cobra.Command{
@@ -69,6 +72,10 @@ var tokenCmd = &cobra.Command{
 		}
 		tokenParams.httpSrvConfig.BindAddr = "127.0.0.1"
 		tokenParams.httpSrvConfig.Tls = false
+
+		if oidcParams.ttl != 0 {
+			ensureOfflineAccessScope(logger)
+		}
 
 		logger.Debug("Start with UI processing", "issuer", oidcParams.httpClientConfig.BaseURL)
 
@@ -100,6 +107,11 @@ var tokenCmd = &cobra.Command{
 
 		// Output tokens based on requested format
 		outputTokens(tokenResponse, logger)
+
+		if oidcParams.ttl != 0 {
+			renewalLoop(ctx, provider, tokenResponse, httpClient, logger)
+		}
+
 		// Give some time to server
 		time.Sleep(time.Millisecond * 2000)
 	},

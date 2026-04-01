@@ -17,16 +17,22 @@ limitations under the License.
 package cmd
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"kc/internal/httpclient"
 	"kc/internal/misc"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/spf13/cobra"
 )
 
@@ -52,6 +58,10 @@ var oidcParams struct {
 	context           string
 	detailIdToken     bool
 	detailAccessToken bool
+	// Used only by token and token-nui. (Not by client)
+	ttl     time.Duration
+	renewAt int // % of the token duration
+
 }
 
 func initOidcParams(cmd *cobra.Command) {
@@ -165,7 +175,7 @@ func outputTokens(tokenResponse *TokenResponse, logger *slog.Logger) {
 	}
 }
 
-// As the server may issue AccessToken as JWT or as opaque form, depending of its configuration, we need a clean test to find the token type.
+// As the server may issue AccessToken as JWT or as opaque form, depends on its configuration, we need a clean test to find the token type.
 func isJWT(token string) bool {
 	// JWT tokens have exactly 3 parts separated by dots
 	parts := strings.Split(token, ".")
@@ -251,4 +261,140 @@ func openBrowser(url, browser string) error {
 	}
 
 	return exec.Command(cmd, args...).Start()
+}
+
+func ensureOfflineAccessScope(logger *slog.Logger) {
+	for _, s := range oidcParams.scopes {
+		if s == "offline_access" {
+			return
+		}
+	}
+	logger.Info("Adding 'offline_access' scope (required for token renewal)")
+	oidcParams.scopes = append(oidcParams.scopes, "offline_access")
+}
+
+// refreshTokenFlow uses a refresh token to obtain new access/ID tokens
+func refreshTokenFlow(ctx context.Context, tokenURL, clientID, clientSecret, refreshToken string, logger *slog.Logger) (*TokenResponse, error) {
+	data := url.Values{}
+	data.Set("grant_type", "refresh_token")
+	data.Set("refresh_token", refreshToken)
+	data.Set("client_id", clientID)
+	if clientSecret != "" {
+		data.Set("client_secret", clientSecret)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create refresh request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	logger.Debug("Refreshing token", "tokenURL", tokenURL)
+
+	httpClient, err := httpclient.New(&oidcParams.httpClientConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to perform refresh request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read refresh response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("refresh request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tokenResponse TokenResponse
+	if err := json.Unmarshal(body, &tokenResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse refresh response: %w", err)
+	}
+
+	logger.Debug("Token refresh successful",
+		"hasAccessToken", tokenResponse.AccessToken != "",
+		"hasIDToken", tokenResponse.IDToken != "",
+		"hasNewRefreshToken", tokenResponse.RefreshToken != "",
+		"expiresIn", tokenResponse.ExpiresIn)
+
+	return &tokenResponse, nil
+}
+
+// renewalLoop continuously renews the token until the TTL deadline is reached.
+// Exits with error if the token expires without a successful renewal.
+func renewalLoop(ctx context.Context, provider *oidc.Provider, initialToken *TokenResponse, httpClient *http.Client, logger *slog.Logger) {
+	deadline := time.Now().Add(oidcParams.ttl)
+	tokenURL := provider.Endpoint().TokenURL
+	refreshToken := initialToken.RefreshToken
+	expiresIn := initialToken.ExpiresIn
+	renewalCount := 0
+
+	_, _ = fmt.Fprintf(os.Stderr, "\nRenewal loop started (ttl: %s, renewAt: %d%%, deadline: %s)\n",
+		oidcParams.ttl, oidcParams.renewAt, deadline.Format(time.RFC3339))
+
+	if refreshToken == "" {
+		_, _ = fmt.Fprintf(os.Stderr, "Error: no refresh token received (is 'offline_access' scope granted by the server?)\n")
+		os.Exit(1)
+	}
+
+	for {
+		if expiresIn <= 0 {
+			_, _ = fmt.Fprintf(os.Stderr, "Error: token has no expiration info, cannot schedule renewal\n")
+			os.Exit(1)
+		}
+
+		tokenLifetime := time.Duration(expiresIn) * time.Second
+		renewAfter := time.Duration(float64(tokenLifetime) * float64(oidcParams.renewAt) / 100.0)
+		tokenExpiresAt := time.Now().Add(tokenLifetime)
+
+		_, _ = fmt.Fprintf(os.Stderr, "Token lifetime: %s, renewal in: %s (at %s), expires at: %s\n",
+			tokenLifetime, renewAfter.Truncate(time.Second),
+			time.Now().Add(renewAfter).Format(time.TimeOnly),
+			tokenExpiresAt.Format(time.TimeOnly))
+
+		if time.Now().Add(renewAfter).After(deadline) {
+			remaining := time.Until(deadline)
+			if remaining > 0 {
+				_, _ = fmt.Fprintf(os.Stderr, "Next renewal would be past deadline, waiting %s for TTL to expire...\n", remaining.Truncate(time.Second))
+				time.Sleep(remaining)
+			}
+			_, _ = fmt.Fprintf(os.Stderr, "TTL reached, exiting renewal loop\n")
+			return
+		}
+
+		_, _ = fmt.Fprintf(os.Stderr, "Waiting %s before next renewal...\n", renewAfter.Truncate(time.Second))
+		time.Sleep(renewAfter)
+
+		renewalCount++
+		_, _ = fmt.Fprintf(os.Stderr, "\n--- Renewal #%d at %s ---\n", renewalCount, time.Now().Format(time.RFC3339))
+
+		newToken, err := refreshTokenFlow(ctx, tokenURL, oidcParams.clientId, oidcParams.clientSecret, refreshToken, logger)
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Renewal failed: %v\n", err)
+			if time.Now().After(tokenExpiresAt) {
+				_, _ = fmt.Fprintf(os.Stderr, "Error: token expired without successful renewal\n")
+				os.Exit(1)
+			}
+			_, _ = fmt.Fprintf(os.Stderr, "Token still valid until %s, will retry\n", tokenExpiresAt.Format(time.TimeOnly))
+			expiresIn = int(time.Until(tokenExpiresAt).Seconds())
+			continue
+		}
+
+		_, _ = fmt.Fprintf(os.Stderr, "Renewal #%d successful\n", renewalCount)
+
+		if newToken.RefreshToken != "" {
+			refreshToken = newToken.RefreshToken
+		}
+		expiresIn = newToken.ExpiresIn
+
+		verifyTokens(ctx, provider, newToken, httpClient, logger)
+		outputTokens(newToken, logger)
+	}
 }

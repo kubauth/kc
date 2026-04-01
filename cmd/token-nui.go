@@ -28,6 +28,7 @@ import (
 	"os"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -45,6 +46,8 @@ func init() {
 	initOidcParams(tokenNuiCmd)
 	tokenNuiCmd.PersistentFlags().StringVarP(&tokenNuiParams.login, "login", "u", "", "User login (Env:KC_USER_LOGIN)")
 	tokenNuiCmd.PersistentFlags().StringVarP(&tokenNuiParams.password, "password", "p", "", "User password (Env:KC_USER_PASSWORD)")
+	tokenNuiCmd.PersistentFlags().DurationVarP(&oidcParams.ttl, "ttl", "t", time.Duration(0), "Time to live (default: 0)")
+	tokenNuiCmd.PersistentFlags().IntVar(&oidcParams.renewAt, "renewAt", 60, "Percentage of the ticket duration to Trigger renewal ")
 }
 
 var tokenNuiCmd = &cobra.Command{
@@ -57,6 +60,10 @@ var tokenNuiCmd = &cobra.Command{
 		if err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
+		}
+
+		if oidcParams.ttl != 0 {
+			ensureOfflineAccessScope(logger)
 		}
 
 		logger.Debug("Start No UI processing", "issuer", oidcParams.httpClientConfig.BaseURL)
@@ -93,6 +100,10 @@ var tokenNuiCmd = &cobra.Command{
 
 		// Output tokens using shared function
 		outputTokens(tokenResponse, logger)
+
+		if oidcParams.ttl != 0 {
+			renewalLoop(ctx, provider, tokenResponse, httpClient, logger)
+		}
 
 	},
 }

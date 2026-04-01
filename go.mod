@@ -1,6 +1,6 @@
 module kc
 
-go 1.24.6
+go 1.25
 
 replace github.com/kubauth/kubauth-kubeconfig => ../kubauth-kubeconfig
 
@@ -15,7 +15,7 @@ require (
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/pflag v1.0.10
 	golang.org/x/crypto v0.45.0
-	golang.org/x/oauth2 v0.31.0
+	golang.org/x/oauth2 v0.32.0
 	gopkg.in/fsnotify.v1 v1.4.7
 	k8s.io/apimachinery v0.34.1
 	k8s.io/client-go v0.34.1

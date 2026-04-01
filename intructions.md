@@ -61,3 +61,12 @@ About README.md
 - kc whoami will works after user has been authenticated
 - in workflow example, Token Management for Applications, use id_token
 
+----------
+
+On the 'token' command, when the 'ttl' flag is different of 0:
+- Check than 'offline_access' scope is set. If not, add it
+- Enter a loop of renewal exiting at the end of ttl.
+'renewAt' is the percentage of the token duration from which the renewal process occurs.
+If the token is expired without successful renewal, then exit as error.
+Aim is to have a tool to exercise the renewal process of the OIDC server
+
