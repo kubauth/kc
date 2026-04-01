@@ -58,7 +58,7 @@ func verifyTokens(ctx context.Context, provider *oidc.Provider, tokenResponse *T
 			err := verifyOpaqueAccessToken(ctx, httpClient, provider, tokenResponse.AccessToken, oidcParams.clientId, oidcParams.clientSecret)
 			if err != nil {
 				logger.Debug("Opaque access token verification failed", "error", err)
-				_, _ = fmt.Fprintf(os.Stderr, "Warning: Opaque access token verification failed: %v\n", err)
+				_, _ = fmt.Fprintf(os.Stderr, "\n************ WARNING: Opaque access token verification failed: %v\n", err)
 			} else {
 				logger.Debug("Opaque access token verified successfully")
 			}
@@ -181,12 +181,18 @@ func verifyOpaqueAccessToken(ctx context.Context, httpClient *http.Client, provi
 		"clientSecretLength", len(clientSecret),
 		"hasClientSecret", clientSecret != "")
 
-	// Try to find the introspection endpoint
-	// First, try the standard RFC 7662 introspection endpoint
-	introspectionURL := strings.TrimSuffix(provider.Endpoint().TokenURL, "/token") + "/introspect"
-
-	// Alternatively, we could try to get it from the provider's discovery document
-	// but for now, we'll use the standard endpoint pattern
+	// Try to get the introspection endpoint from the provider discovery document (RFC 8414)
+	var discoveryExtra struct {
+		IntrospectionEndpoint string `json:"introspection_endpoint"`
+	}
+	introspectionURL := ""
+	if err := provider.Claims(&discoveryExtra); err == nil && discoveryExtra.IntrospectionEndpoint != "" {
+		introspectionURL = discoveryExtra.IntrospectionEndpoint
+		logger.Debug("Using introspection endpoint from discovery", "introspectionURL", introspectionURL)
+	} else {
+		introspectionURL = strings.TrimSuffix(provider.Endpoint().TokenURL, "/token") + "/introspect"
+		logger.Debug("Introspection endpoint not in discovery, using fallback", "introspectionURL", introspectionURL)
+	}
 
 	// Prepare introspection request
 	data := url.Values{}

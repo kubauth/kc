@@ -70,3 +70,6 @@ On the 'token' command, when the 'ttl' flag is different of 0:
 If the token is expired without successful renewal, then exit as error.
 Aim is to have a tool to exercise the renewal process of the OIDC server
 
+------
+
+In verifyOpaqueAccessToken, I want to use the introspectionURL from the provider discovery document. And fallback on standard one if not present
