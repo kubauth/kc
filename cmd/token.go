@@ -108,6 +108,10 @@ var tokenCmd = &cobra.Command{
 		// Output tokens based on requested format
 		outputTokens(tokenResponse, logger)
 
+		if oidcParams.userInfo {
+			dumpUserInfo(ctx, provider, httpClient, tokenResponse, logger)
+		}
+
 		if oidcParams.ttl != 0 {
 			renewalLoop(ctx, provider, tokenResponse, httpClient, logger)
 		}

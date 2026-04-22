@@ -73,3 +73,10 @@ Aim is to have a tool to exercise the renewal process of the OIDC server
 ------
 
 In verifyOpaqueAccessToken, I want to use the introspectionURL from the provider discovery document. And fallback on standard one if not present
+
+
+------
+
+On token and token-nui command, if the userInfo flag is set, issue a userinfo request and dump the result.
+If the provider do not provide userinfo endpoint, issue a warning message.
+

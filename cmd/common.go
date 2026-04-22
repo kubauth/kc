@@ -58,10 +58,10 @@ var oidcParams struct {
 	context           string
 	detailIdToken     bool
 	detailAccessToken bool
-	// Used only by token and token-nui. (Not by client)
-	ttl     time.Duration
-	renewAt int // % of the token duration
-
+	// Used only by token and token-nui. (Not by client flow command)
+	ttl      time.Duration
+	renewAt  int // % of the token duration
+	userInfo bool
 }
 
 func initOidcParams(cmd *cobra.Command) {
@@ -82,6 +82,7 @@ func initOidcParams(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolVar(&oidcParams.onlyAccessToken, "onlyAccessToken", false, "Output only Access token")
 	cmd.PersistentFlags().BoolVarP(&oidcParams.detailIdToken, "detailIdToken", "d", false, "Detail ID token")
 	cmd.PersistentFlags().BoolVarP(&oidcParams.detailAccessToken, "detailAccessToken", "a", false, "Detail Access token")
+	cmd.PersistentFlags().BoolVar(&oidcParams.userInfo, "userInfo", false, "Request userinfo endpoint and dump result")
 
 }
 
@@ -327,6 +328,64 @@ func refreshTokenFlow(ctx context.Context, tokenURL, clientID, clientSecret, ref
 	return &tokenResponse, nil
 }
 
+// dumpUserInfo requests the OIDC userinfo endpoint using the access token and
+// prints the response as pretty JSON. If the provider does not advertise a
+// userinfo endpoint, it emits a warning instead.
+func dumpUserInfo(ctx context.Context, provider *oidc.Provider, httpClient *http.Client, tokenResponse *TokenResponse, logger *slog.Logger) {
+	userInfoURL := provider.UserInfoEndpoint()
+	if userInfoURL == "" {
+		_, _ = fmt.Fprintf(os.Stderr, "Warning: provider does not expose a userinfo endpoint\n")
+		return
+	}
+
+	if tokenResponse.AccessToken == "" {
+		_, _ = fmt.Fprintf(os.Stderr, "Warning: cannot fetch userinfo without an access token\n")
+		return
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to build userinfo request: %v\n", err)
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+tokenResponse.AccessToken)
+	req.Header.Set("Accept", "application/json")
+
+	logger.Debug("Requesting userinfo", "userInfoURL", userInfoURL)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "Warning: userinfo request failed: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to read userinfo response: %v\n", err)
+		return
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		_, _ = fmt.Fprintf(os.Stderr, "Warning: userinfo request returned status %d: %s\n", resp.StatusCode, string(body))
+		return
+	}
+
+	fmt.Printf("UserInfo:\n")
+	var claims map[string]interface{}
+	if err := json.Unmarshal(body, &claims); err != nil {
+		// Not JSON (e.g. signed JWT response): dump raw body
+		fmt.Println(string(body))
+		return
+	}
+	pretty, err := json.MarshalIndent(claims, "", "  ")
+	if err != nil {
+		fmt.Println(string(body))
+		return
+	}
+	fmt.Println(string(pretty))
+}
+
 // renewalLoop continuously renews the token until the TTL deadline is reached.
 // Exits with error if the token expires without a successful renewal.
 func renewalLoop(ctx context.Context, provider *oidc.Provider, initialToken *TokenResponse, httpClient *http.Client, logger *slog.Logger) {
@@ -396,5 +455,8 @@ func renewalLoop(ctx context.Context, provider *oidc.Provider, initialToken *Tok
 
 		verifyTokens(ctx, provider, newToken, httpClient, logger)
 		outputTokens(newToken, logger)
+		if oidcParams.userInfo {
+			dumpUserInfo(ctx, provider, httpClient, newToken, logger)
+		}
 	}
 }

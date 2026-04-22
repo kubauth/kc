@@ -101,6 +101,10 @@ var tokenNuiCmd = &cobra.Command{
 		// Output tokens using shared function
 		outputTokens(tokenResponse, logger)
 
+		if oidcParams.userInfo {
+			dumpUserInfo(ctx, provider, httpClient, tokenResponse, logger)
+		}
+
 		if oidcParams.ttl != 0 {
 			renewalLoop(ctx, provider, tokenResponse, httpClient, logger)
 		}

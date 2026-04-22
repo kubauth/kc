@@ -7,7 +7,7 @@ replace github.com/kubauth/kubauth-kubeconfig => ../kubauth-kubeconfig
 replace github.com/kubauth/kubauth => ../kubauth
 
 require (
-	github.com/coreos/go-oidc/v3 v3.15.0
+	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/go-logr/logr v1.4.3
 	github.com/kubauth/kubauth v0.2.0
 	github.com/kubauth/kubauth-kubeconfig v0.1.0
@@ -27,7 +27,7 @@ require (
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-openapi/jsonpointer v0.22.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.1 // indirect
 	github.com/go-openapi/swag v0.24.1 // indirect
