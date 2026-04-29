@@ -44,6 +44,11 @@ type TokenResponse struct {
 	RefreshToken string `json:"refresh_token,omitempty"`
 	IDToken      string `json:"id_token,omitempty"`
 	Scope        string `json:"scope,omitempty"`
+
+	// Set during browser callback when --userInfo; reused by CLI dump to avoid a second request.
+	userInfoFetched    bool   `json:"-"`
+	userInfoCachedJSON string `json:"-"`
+	userInfoCachedWarn string `json:"-"`
 }
 
 var oidcParams struct {
@@ -80,8 +85,8 @@ func initOidcParams(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVarP(&oidcParams.clientSecret, "clientSecret", "s", "", "Client Secret (Env:KC_CLIENT_SECRET)")
 	cmd.PersistentFlags().BoolVar(&oidcParams.onlyIdToken, "onlyIdToken", false, "Output only ID token")
 	cmd.PersistentFlags().BoolVar(&oidcParams.onlyAccessToken, "onlyAccessToken", false, "Output only Access token")
-	cmd.PersistentFlags().BoolVarP(&oidcParams.detailIdToken, "detailIdToken", "d", false, "Detail ID token")
-	cmd.PersistentFlags().BoolVarP(&oidcParams.detailAccessToken, "detailAccessToken", "a", false, "Detail Access token")
+	cmd.PersistentFlags().BoolVarP(&oidcParams.detailIdToken, "detailIdToken", "d", false, "Print decoded ID token (JWT) to the terminal only; the browser success page always shows token details")
+	cmd.PersistentFlags().BoolVarP(&oidcParams.detailAccessToken, "detailAccessToken", "a", false, "Print decoded access token or opaque notice to the terminal only; the browser success page always shows token details")
 	cmd.PersistentFlags().BoolVar(&oidcParams.userInfo, "userInfo", false, "Request userinfo endpoint and dump result")
 
 }
@@ -328,25 +333,26 @@ func refreshTokenFlow(ctx context.Context, tokenURL, clientID, clientSecret, ref
 	return &tokenResponse, nil
 }
 
-// dumpUserInfo requests the OIDC userinfo endpoint using the access token and
-// prints the response as pretty JSON. If the provider does not advertise a
-// userinfo endpoint, it emits a warning instead.
-func dumpUserInfo(ctx context.Context, provider *oidc.Provider, httpClient *http.Client, tokenResponse *TokenResponse, logger *slog.Logger) {
+// userInfoJSONResult is the outcome of a userinfo request for CLI or HTML output.
+type userInfoJSONResult struct {
+	JSON    string // pretty-printed JSON, empty on failure
+	Warning string // set when userinfo was requested but could not be retrieved
+}
+
+// fetchUserInfoJSON calls the OIDC userinfo endpoint and returns pretty JSON, or a warning reason.
+func fetchUserInfoJSON(ctx context.Context, provider *oidc.Provider, httpClient *http.Client, tokenResponse *TokenResponse, logger *slog.Logger) userInfoJSONResult {
 	userInfoURL := provider.UserInfoEndpoint()
 	if userInfoURL == "" {
-		_, _ = fmt.Fprintf(os.Stderr, "Warning: provider does not expose a userinfo endpoint\n")
-		return
+		return userInfoJSONResult{Warning: "provider does not expose a userinfo endpoint"}
 	}
 
 	if tokenResponse.AccessToken == "" {
-		_, _ = fmt.Fprintf(os.Stderr, "Warning: cannot fetch userinfo without an access token\n")
-		return
+		return userInfoJSONResult{Warning: "cannot fetch userinfo without an access token"}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to build userinfo request: %v\n", err)
-		return
+		return userInfoJSONResult{Warning: fmt.Sprintf("failed to build userinfo request: %v", err)}
 	}
 	req.Header.Set("Authorization", "Bearer "+tokenResponse.AccessToken)
 	req.Header.Set("Accept", "application/json")
@@ -355,35 +361,57 @@ func dumpUserInfo(ctx context.Context, provider *oidc.Provider, httpClient *http
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Warning: userinfo request failed: %v\n", err)
-		return
+		return userInfoJSONResult{Warning: fmt.Sprintf("userinfo request failed: %v", err)}
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to read userinfo response: %v\n", err)
-		return
+		return userInfoJSONResult{Warning: fmt.Sprintf("failed to read userinfo response: %v", err)}
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		_, _ = fmt.Fprintf(os.Stderr, "Warning: userinfo request returned status %d: %s\n", resp.StatusCode, string(body))
-		return
+		return userInfoJSONResult{Warning: fmt.Sprintf("userinfo request returned status %d: %s", resp.StatusCode, string(body))}
 	}
 
-	fmt.Printf("UserInfo:\n")
 	var claims map[string]interface{}
 	if err := json.Unmarshal(body, &claims); err != nil {
-		// Not JSON (e.g. signed JWT response): dump raw body
-		fmt.Println(string(body))
-		return
+		// Not JSON (e.g. signed JWT response): wrap raw body
+		wrapped := map[string]string{"raw": string(body)}
+		pretty, err := json.MarshalIndent(wrapped, "", "  ")
+		if err != nil {
+			return userInfoJSONResult{JSON: string(body)}
+		}
+		return userInfoJSONResult{JSON: string(pretty)}
 	}
 	pretty, err := json.MarshalIndent(claims, "", "  ")
 	if err != nil {
-		fmt.Println(string(body))
+		return userInfoJSONResult{JSON: string(body)}
+	}
+	return userInfoJSONResult{JSON: string(pretty)}
+}
+
+// dumpUserInfo requests the OIDC userinfo endpoint using the access token and
+// prints the response as pretty JSON. If the provider does not advertise a
+// userinfo endpoint, it emits a warning instead.
+func dumpUserInfo(ctx context.Context, provider *oidc.Provider, httpClient *http.Client, tokenResponse *TokenResponse, logger *slog.Logger) {
+	if tokenResponse.userInfoFetched {
+		if tokenResponse.userInfoCachedWarn != "" {
+			_, _ = fmt.Fprintf(os.Stderr, "Warning: %s\n", tokenResponse.userInfoCachedWarn)
+		}
+		if tokenResponse.userInfoCachedJSON != "" {
+			fmt.Printf("UserInfo:\n%s\n", tokenResponse.userInfoCachedJSON)
+		}
 		return
 	}
-	fmt.Println(string(pretty))
+
+	res := fetchUserInfoJSON(ctx, provider, httpClient, tokenResponse, logger)
+	if res.Warning != "" {
+		_, _ = fmt.Fprintf(os.Stderr, "Warning: %s\n", res.Warning)
+	}
+	if res.JSON != "" {
+		fmt.Printf("UserInfo:\n%s\n", res.JSON)
+	}
 }
 
 // renewalLoop continuously renews the token until the TTL deadline is reached.

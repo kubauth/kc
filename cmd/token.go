@@ -219,8 +219,20 @@ func performAuthorizationCodeFlow(ctx context.Context, provider *oidc.Provider, 
 			return
 		}
 
-		// Display success page with tokens
-		displaySuccessPage(w, tokenResponse)
+		httpCli, cliErr := httpclient.New(&oidcParams.httpClientConfig)
+		if cliErr != nil {
+			serverError = fmt.Errorf("failed to create HTTP client: %w", cliErr)
+			http.Error(w, serverError.Error(), http.StatusInternalServerError)
+			return
+		}
+		if oidcParams.userInfo {
+			res := fetchUserInfoJSON(ctx, provider, httpCli, tokenResponse, logger)
+			tokenResponse.userInfoFetched = true
+			tokenResponse.userInfoCachedJSON = res.JSON
+			tokenResponse.userInfoCachedWarn = res.Warning
+		}
+		view := buildSuccessPageView(tokenResponse)
+		displaySuccessPage(w, &view)
 	})
 
 	// Handle root path with instructions
@@ -361,213 +373,235 @@ func exchangeCodeForTokens(ctx context.Context, oauth2Config oauth2.Config, code
 	return &tokenResponse, nil
 }
 
-// displaySuccessPage shows a success page with token information
-func displaySuccessPage(w http.ResponseWriter, tokenResponse *TokenResponse) {
-	tmplStr := `<!DOCTYPE html>
-<html>
+// successPageView drives the OAuth callback HTML success page.
+type successPageView struct {
+	MetadataJSON      string
+	IDTokenJSON       string
+	AccessTokenJSON   string
+	RefreshTokenJSON  string
+	UserInfoRequested bool
+	UserInfoJSON      string
+	UserInfoWarning   string
+}
+
+func combineJWTPartsJSON(token string) string {
+	headerStr, payloadStr, err := decodeJWT(token)
+	if err != nil {
+		fallback := map[string]string{
+			"decode_error": err.Error(),
+			"jwt":          token,
+		}
+		b, _ := json.MarshalIndent(fallback, "", "  ")
+		return string(b)
+	}
+	var headerObj, payloadObj interface{}
+	if err := json.Unmarshal([]byte(headerStr), &headerObj); err != nil {
+		b, _ := json.MarshalIndent(map[string]string{"decode_error": err.Error(), "jwt": token}, "", "  ")
+		return string(b)
+	}
+	if err := json.Unmarshal([]byte(payloadStr), &payloadObj); err != nil {
+		b, _ := json.MarshalIndent(map[string]string{"decode_error": err.Error(), "jwt": token}, "", "  ")
+		return string(b)
+	}
+	combined := map[string]interface{}{
+		"header":  headerObj,
+		"payload": payloadObj,
+	}
+	b, err := json.MarshalIndent(combined, "", "  ")
+	if err != nil {
+		b, _ := json.MarshalIndent(map[string]string{"decode_error": err.Error(), "jwt": token}, "", "  ")
+		return string(b)
+	}
+	return string(b)
+}
+
+func formatAccessTokenForSuccessPage(token string) string {
+	if isJWT(token) {
+		return combineJWTPartsJSON(token)
+	}
+	type opaqueView struct {
+		Format   string `json:"format"`
+		Encoding string `json:"encoding"`
+		Value    string `json:"value"`
+	}
+	b, err := json.MarshalIndent(opaqueView{
+		Format:   "opaque",
+		Encoding: "base64",
+		Value:    base64.StdEncoding.EncodeToString([]byte(token)),
+	}, "", "  ")
+	if err != nil {
+		return `{"error":"failed to encode opaque access token"}`
+	}
+	return string(b)
+}
+
+func buildSuccessPageView(token *TokenResponse) successPageView {
+	v := successPageView{}
+	meta := map[string]interface{}{}
+	if token.TokenType != "" {
+		meta["token_type"] = token.TokenType
+	}
+	if token.ExpiresIn > 0 {
+		meta["expires_in"] = token.ExpiresIn
+		meta["expires_in_human"] = (time.Duration(token.ExpiresIn) * time.Second).String()
+	}
+	if token.Scope != "" {
+		meta["scope"] = token.Scope
+	}
+	if len(meta) > 0 {
+		b, _ := json.MarshalIndent(meta, "", "  ")
+		v.MetadataJSON = string(b)
+	}
+	if token.IDToken != "" {
+		v.IDTokenJSON = combineJWTPartsJSON(token.IDToken)
+	}
+	if token.AccessToken != "" {
+		v.AccessTokenJSON = formatAccessTokenForSuccessPage(token.AccessToken)
+	}
+	if token.RefreshToken != "" {
+		wrapped := map[string]string{"refresh_token": token.RefreshToken}
+		b, _ := json.MarshalIndent(wrapped, "", "  ")
+		v.RefreshTokenJSON = string(b)
+	}
+	if oidcParams.userInfo {
+		v.UserInfoRequested = true
+		v.UserInfoJSON = token.userInfoCachedJSON
+		v.UserInfoWarning = token.userInfoCachedWarn
+	}
+	return v
+}
+
+// displaySuccessPage shows a success page with token information as JSON.
+func displaySuccessPage(w http.ResponseWriter, view *successPageView) {
+	const tmplStr = `<!DOCTYPE html>
+<html lang="en">
 <head>
-    <title>Authorization Successful</title>
+    <meta charset="utf-8">
+    <title>Authorization successful</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
-        .container { text-align: center; }
-        .success { color: #4CAF50; }
-        .token-info { background: #f5f5f5; padding: 20px; margin: 20px 0; text-align: left; border-radius: 5px; }
-        .token-field { margin: 10px 0; word-break: break-all; position: relative; }
-        .token-label { font-weight: bold; color: #333; }
-        .token-value { 
-            font-family: monospace; 
-            background: #e8e8e8; 
-            padding: 10px; 
-            border-radius: 3px; 
-            position: relative;
-            padding-right: 65px;
+        :root { color-scheme: light dark; }
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1.25rem; line-height: 1.45; }
+        h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+        .lead { color: #555; margin-top: 0; }
+        section { margin: 1.5rem 0; }
+        h2 { font-size: 1.05rem; margin: 0 0 0.5rem; font-weight: 600; }
+        .row { display: flex; align-items: flex-start; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.35rem; }
+        pre.json {
+            flex: 1 1 100%;
+            margin: 0;
+            padding: 0.75rem 1rem;
+            overflow-x: auto;
+            font-size: 0.8rem;
+            border-radius: 6px;
+            background: #f0f2f5;
+            border: 1px solid #d8dde3;
         }
-        .copy-icon {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            cursor: pointer;
+        @media (prefers-color-scheme: dark) {
+            pre.json { background: #1e222a; border-color: #3a4250; }
+            .lead { color: #aaa; }
+        }
+        button.copy {
+            font: inherit;
+            font-size: 0.8rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 6px;
+            border: 1px solid #007cba;
             background: #007cba;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 6px 10px;
-            font-size: 10px;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-            transition: all 0.2s ease;
-            min-width: 50px;
-            height: 26px;
-            text-align: center;
-            line-height: 14px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-            z-index: 10;
+            color: #fff;
+            cursor: pointer;
         }
-        .copy-icon:hover {
-            background: #005a87;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        button.copy:hover { filter: brightness(1.08); }
+        button.copy:active { filter: brightness(0.92); }
+        .warn {
+            padding: 0.65rem 0.85rem;
+            border-radius: 6px;
+            background: #fff8e6;
+            border: 1px solid #e6c200;
+            color: #5c4a00;
+            font-size: 0.9rem;
         }
-        .copy-icon:active {
-            background: #004466;
-            transform: translateY(0);
-            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        @media (prefers-color-scheme: dark) {
+            .warn { background: #3d3500; border-color: #8a7500; color: #f5e9a8; }
         }
-        .copy-feedback {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            background: #4CAF50;
-            color: white;
-            padding: 6px 10px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-            min-width: 50px;
-            height: 26px;
-            text-align: center;
-            line-height: 14px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-            z-index: 5;
-            pointer-events: none;
-        }
-        .copy-feedback.show {
-            opacity: 1;
-        }
-        .close-message { margin-top: 30px; font-style: italic; color: #666; }
+        footer { margin-top: 2rem; font-style: italic; color: #666; font-size: 0.9rem; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1 class="success">Authorization Successful!</h1>
-        <p>Tokens have been retrieved successfully.</p>
-        
-        <div class="token-info">
-            <h3>Token Information:</h3>
-            {{if .AccessToken}}
-            <div class="token-field">
-                <div class="token-label">Access Token:</div>
-                <div class="token-value">{{.AccessToken}}
-                    <button class="copy-icon" data-token-type="access" title="Copy to clipboard">COPY</button>
-                    <div class="copy-feedback">Copied!</div>
-                </div>
-            </div>
-            {{end}}
-            {{if .IDToken}}
-            <div class="token-field">
-                <div class="token-label">ID Token:</div>
-                <div class="token-value">{{.IDToken}}
-                    <button class="copy-icon" data-token-type="id" title="Copy to clipboard">COPY</button>
-                    <div class="copy-feedback">Copied!</div>
-                </div>
-            </div>
-            {{end}}
-            {{if .RefreshToken}}
-            <div class="token-field">
-                <div class="token-label">Refresh Token:</div>
-                <div class="token-value">{{.RefreshToken}}
-                    <button class="copy-icon" data-token-type="refresh" title="Copy to clipboard">COPY</button>
-                    <div class="copy-feedback">Copied!</div>
-                </div>
-            </div>
-            {{end}}
-            {{if gt .ExpiresIn 0}}
-            <div class="token-field">
-                <div class="token-label">Expires In:</div>
-                <div class="token-value">{{.ExpiresIn}} seconds ({{.ExpiresInDuration}})</div>
-            </div>
-            {{end}}
-        </div>
-        
-        <p class="close-message">You can close this browser window and return to the command line.</p>
-    </div>
-    
+    <h1>Authorization successful</h1>
+    <p class="lead">Tokens were retrieved. Details below as JSON. You can close this window and return to the terminal.</p>
+
+    {{if .MetadataJSON}}
+    <section>
+        <h2>Token response metadata</h2>
+        <div class="row"><button type="button" class="copy" data-target="pre-meta">Copy</button></div>
+        <pre class="json" id="pre-meta">{{.MetadataJSON}}</pre>
+    </section>
+    {{end}}
+
+    {{if .IDTokenJSON}}
+    <section>
+        <h2>ID token (JWT as JSON)</h2>
+        <div class="row"><button type="button" class="copy" data-target="pre-id">Copy</button></div>
+        <pre class="json" id="pre-id">{{.IDTokenJSON}}</pre>
+    </section>
+    {{end}}
+
+    {{if .AccessTokenJSON}}
+    <section>
+        <h2>Access token</h2>
+        <div class="row"><button type="button" class="copy" data-target="pre-access">Copy</button></div>
+        <pre class="json" id="pre-access">{{.AccessTokenJSON}}</pre>
+    </section>
+    {{end}}
+
+    {{if .RefreshTokenJSON}}
+    <section>
+        <h2>Refresh token</h2>
+        <div class="row"><button type="button" class="copy" data-target="pre-refresh">Copy</button></div>
+        <pre class="json" id="pre-refresh">{{.RefreshTokenJSON}}</pre>
+    </section>
+    {{end}}
+
+    {{if .UserInfoRequested}}
+    <section>
+        <h2>UserInfo</h2>
+        {{if .UserInfoWarning}}
+        <p class="warn"><strong>Warning:</strong> {{.UserInfoWarning}}</p>
+        {{end}}
+        {{if .UserInfoJSON}}
+        <div class="row"><button type="button" class="copy" data-target="pre-userinfo">Copy</button></div>
+        <pre class="json" id="pre-userinfo">{{.UserInfoJSON}}</pre>
+        {{end}}
+    </section>
+    {{end}}
+
+    <footer>You can close this browser window and return to the command line.</footer>
+
     <script>
-        function copyTokenToClipboard(buttonElement) {
-            // Find the token text by looking at the parent token-value div
-            const tokenValueDiv = buttonElement.parentNode;
-            const tokenText = tokenValueDiv.childNodes[0].textContent.trim();
-            
-            // Try modern clipboard API first
+        function copyText(text, btn) {
+            function done() {
+                var t = btn.textContent;
+                btn.textContent = 'Copied';
+                setTimeout(function () { btn.textContent = t; }, 1200);
+            }
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(tokenText).then(function() {
-                    showFeedback(buttonElement);
-                }).catch(function(err) {
-                    fallbackCopy(tokenText, buttonElement);
-                });
-            } else {
-                fallbackCopy(tokenText, buttonElement);
+                navigator.clipboard.writeText(text).then(done).catch(function () { fallback(); });
+            } else { fallback(); }
+            function fallback() {
+                var ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+                document.body.appendChild(ta);
+                ta.select();
+                try { if (document.execCommand('copy')) done(); } catch (e) {}
+                document.body.removeChild(ta);
             }
         }
-        
-        function fallbackCopy(text, buttonElement) {
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            textArea.style.top = '-999999px';
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            
-            try {
-                const successful = document.execCommand('copy');
-                if (successful) {
-                    showFeedback(buttonElement);
-                }
-            } catch (err) {
-                // Silent fallback failure
-            } finally {
-                document.body.removeChild(textArea);
-            }
-        }
-        
-        function showFeedback(buttonElement) {
-            const feedback = buttonElement.nextElementSibling;
-            if (feedback && feedback.classList) {
-                feedback.classList.add('show');
-                setTimeout(function() {
-                    feedback.classList.remove('show');
-                }, 2000);
-            }
-        }
-        
-        // Use event delegation - attach to document
-        document.addEventListener('click', function(event) {
-            // Check if the clicked element or its parent is a copy button
-            let target = event.target;
-            let copyButton = null;
-            
-            // Look for copy-icon class in the clicked element or its parents
-            while (target && target !== document) {
-                if (target.classList && target.classList.contains('copy-icon')) {
-                    copyButton = target;
-                    break;
-                }
-                target = target.parentNode;
-            }
-            
-            if (copyButton) {
-                event.preventDefault();
-                event.stopPropagation();
-                copyTokenToClipboard(copyButton);
-            }
-        });
-        
-        // Also add direct event listeners when DOM is ready
-        document.addEventListener('DOMContentLoaded', function() {
-            const copyButtons = document.querySelectorAll('.copy-icon');
-            
-            copyButtons.forEach(function(button) {
-                button.addEventListener('click', function(event) {
-                    event.preventDefault();
-                    copyTokenToClipboard(this);
-                });
+        document.querySelectorAll('button.copy').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var id = btn.getAttribute('data-target');
+                var el = id && document.getElementById(id);
+                if (el) copyText(el.textContent, btn);
             });
         });
     </script>
@@ -580,17 +614,9 @@ func displaySuccessPage(w http.ResponseWriter, tokenResponse *TokenResponse) {
 		return
 	}
 
-	data := struct {
-		*TokenResponse
-		ExpiresInDuration string
-	}{
-		TokenResponse:     tokenResponse,
-		ExpiresInDuration: time.Duration(tokenResponse.ExpiresIn * int(time.Second)).String(),
-	}
-
-	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	tmpl.Execute(w, data)
+	_ = tmpl.Execute(w, view)
 }
 
 // generateRandomString generates a cryptographically secure random string
