@@ -80,3 +80,15 @@ In verifyOpaqueAccessToken, I want to use the introspectionURL from the provider
 On token and token-nui command, if the userInfo flag is set, issue a userinfo request and dump the result.
 If the provider do not provide userinfo endpoint, issue a warning message.
 
+
+---
+Composer2
+
+Fully rework the displaySuccessPage() layout:
+
+- Display the OIDC token in json, in a clean way
+- If access token is opaque, display it encoded. If not, display it in json.
+- If --userInfo is set, display userInfo in json. With a warning if not available.
+- --detailIdToken and --detailAccessToken are only for controlling display in command line. Always display the tokens in this page, whatever values have these flags.
+- Still provide 'copy' buttons. But, rework the way these buttons work. Seems unnecessary complex. I think this could be greatly simplified. 
+
