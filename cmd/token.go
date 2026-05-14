@@ -46,6 +46,7 @@ var tokenParams struct {
 	httpSrvConfig httpsrv.Config
 	usePKCE       bool
 	browser       string
+	prompt        string
 }
 
 func init() {
@@ -56,7 +57,7 @@ func init() {
 	tokenCmd.PersistentFlags().StringVar(&tokenParams.browser, "browser", "", "Browser to use (default: system default, options: chrome, firefox, safari)")
 	tokenCmd.PersistentFlags().DurationVarP(&oidcParams.ttl, "ttl", "t", time.Duration(0), "Time to live (default: 0)")
 	tokenCmd.PersistentFlags().IntVar(&oidcParams.renewAt, "renewAt", 60, "Percentage of the ticket duration to Trigger renewal ")
-
+	tokenCmd.PersistentFlags().StringVar(&tokenParams.prompt, "prompt", "", "OAuth prompt parameter sent to the authorization server (openid: none|login|consent|select_account, space-separated for several). Omit from the request when empty (e.g. --prompt=)")
 }
 
 var tokenCmd = &cobra.Command{
@@ -158,16 +159,19 @@ func performAuthorizationCodeFlow(ctx context.Context, provider *oidc.Provider, 
 		Scopes:       oidcParams.scopes,
 	}
 
-	// Build authorization URL, conditionally with PKCE
-	var authURL string
+	// Build authorization URL (optional PKCE, optional prompt).
+	authOpts := []oauth2.AuthCodeOption{}
 	if tokenParams.usePKCE {
-		authURL = oauth2Config.AuthCodeURL(state,
+		authOpts = append(authOpts,
 			oauth2.SetAuthURLParam("code_challenge", codeChallenge),
 			oauth2.SetAuthURLParam("code_challenge_method", "S256"),
 		)
-	} else {
-		authURL = oauth2Config.AuthCodeURL(state)
 	}
+	if p := strings.TrimSpace(tokenParams.prompt); p != "" {
+		authOpts = append(authOpts, oauth2.SetAuthURLParam("prompt", p))
+		logger.Debug("Authorization URL will include prompt", "prompt", p)
+	}
+	authURL := oauth2Config.AuthCodeURL(state, authOpts...)
 
 	logger.Debug("Authorization URL generated", "redirectURI", redirectURI, "authURL", authURL)
 

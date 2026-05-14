@@ -92,3 +92,8 @@ Fully rework the displaySuccessPage() layout:
 - --detailIdToken and --detailAccessToken are only for controlling display in command line. Always display the tokens in this page, whatever values have these flags.
 - Still provide 'copy' buttons. But, rework the way these buttons work. Seems unnecessary complex. I think this could be greatly simplified. 
 
+
+---
+Composer2
+
+Handle the 'prompt' option added in token subcommand parameters.

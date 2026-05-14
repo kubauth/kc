@@ -1,5 +1,6 @@
 # v0.2.1
 
+- --prompt option added. If set, value is added in authorization request
 - 'offline_access' scope is added only if --ttl option is set
 - token subcommand: Refactoring of the 'Authorization successful' page to display tokens in decoded form. 
 - Add --userInfo option, to request also on userinfo endpoint.

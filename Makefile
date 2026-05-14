@@ -51,7 +51,7 @@ version: ## Set version in binary
 
 
 .PHONY: build
-build: ## Build kc binary with dependencies
+build: version ## Build kc binary with dependencies
 	CGO_ENABLED=0 go build -o bin/kc main.go
 
 
