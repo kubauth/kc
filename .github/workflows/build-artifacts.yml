@@ -1,0 +1,87 @@
+name: build-artifact
+
+# Create a release for the `kc` binary, using goreleaser through the makefile
+on:
+  push:
+    branches:
+      - main
+  # Allow manual runs from the Actions tab / `gh workflow run`.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# kc/go.mod uses local `replace` directives:
+#   replace github.com/kubauth/kubauth            => ../kubauth
+#   replace github.com/kubauth/kubauth-kubeconfig => ../kubauth-kubeconfig
+# We reproduce that on-disk layout by checking the three repos out side by
+# side under $GITHUB_WORKSPACE (kc, kubauth, kubauth-kubeconfig) and running
+# every shell step from the `kc` directory.
+defaults:
+  run:
+    working-directory: kc
+
+jobs:
+  build-artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout kc
+        uses: actions/checkout@v5
+        with:
+          path: kc
+          fetch-depth: 0          # goreleaser needs tags + full history
+
+      # Required by `replace github.com/kubauth/kubauth => ../kubauth`.
+      # Defaults to the repo's default branch (main), matching local dev.
+      # Uncomment `ref:` to pin to the version required in kc/go.mod.
+      - name: Checkout kubauth
+        uses: actions/checkout@v5
+        with:
+          repository: kubauth/kubauth
+          path: kubauth
+          # ref: v0.2.1
+
+      # Required by `replace github.com/kubauth/kubauth-kubeconfig => ../kubauth-kubeconfig`.
+      - name: Checkout kubauth-kubeconfig
+        uses: actions/checkout@v5
+        with:
+          repository: kubauth/kubauth-kubeconfig
+          path: kubauth-kubeconfig
+          # ref: v0.2.0
+
+      # ubuntu-latest already ships make, go and docker; this only adds the
+      # bits `make docker-buildx` needs for cross-platform builds.
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: kc/go.mod
+          cache-dependency-path: kc/go.sum
+
+      # Cross-platform emulation for the linux/arm64 + linux/amd64 build.
+      # `make docker-buildx` creates its own `kubocd-builder`, so no
+      # setup-buildx-action step is needed here.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Install goreleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: v2.16.0          # pinned (was `latest`) to avoid silent drift
+          install-only: true       # install the binary, don't run it
+
+      # We reuse the same tag across runs, so delete any previous release
+      # first. `|| true` keeps the first run (no release yet) from failing.
+      # The tag is derived from APP_VERSION in the Makefile to avoid drift.
+      - name: Delete previous release
+        run: |
+          APP_VERSION=$(grep -m1 '^APP_VERSION' Makefile | awk '{print $3}')
+          gh release delete "$APP_VERSION" --yes || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # NB: We reuse the same tag across runs.
+      # Tag is moved to the latest commit in the makefile.
+      - name: make release
+        run: make release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
